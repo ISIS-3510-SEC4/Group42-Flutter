@@ -1,6 +1,4 @@
-
 enum MeetingStatus { upcoming, previous, canceled }
-
 
 class Meeting {
   final String placeName;
@@ -21,6 +19,18 @@ class Meeting {
     this.rating,
     this.imageUrl = '',
     this.status = MeetingStatus.upcoming,
+  });
+}
+
+class MeetingReview {
+  final String reviewerName;
+  final int rating;
+  final String comment;
+
+  const MeetingReview({
+    required this.reviewerName,
+    required this.rating,
+    required this.comment,
   });
 }
 
@@ -78,5 +88,39 @@ class MockMeetings {
       imageUrl: 'https://picsum.photos/seed/espoti2/300/200',
       status: MeetingStatus.upcoming,
     ),
+  ];
+
+  static const List<Meeting> recommendations = [
+    Meeting(
+      placeName: 'Restaurant Los Andes',
+      timeLabel: '',
+      distanceLabel: '1 km for everyone',
+      rating: 4,
+    ),
+    Meeting(
+      placeName: 'Cafeteria Doña Blanca',
+      timeLabel: '',
+      distanceLabel: '1.5 km for everyone',
+      rating: 4,
+    ),
+    Meeting(
+      placeName: 'Restaurant El Toro',
+      timeLabel: '',
+      distanceLabel: '2 km for everyone',
+      rating: 4,
+    ),
+  ];
+
+  static const Meeting winningPlace = Meeting(
+    placeName: 'Restaurant Los Andes',
+    timeLabel: '',
+    distanceLabel: '1 km from everyone',
+    rating: 4,
+  );
+
+  static const List<MeetingReview> winningPlaceReviews = [
+    MeetingReview(reviewerName: 'Camilo', rating: 4, comment: 'Delicious food'),
+    MeetingReview(
+        reviewerName: 'Lucia', rating: 3, comment: 'The service can be better'),
   ];
 }
