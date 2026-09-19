@@ -21,8 +21,11 @@ class ProfilePage extends StatelessWidget {
       case EspotiNavItem.profile:
         break; 
       case EspotiNavItem.createMeeting:
-      case EspotiNavItem.friends:
+        Navigator.pushReplacementNamed(context, AppRoutes.createMeeting);
         break; 
+      case EspotiNavItem.friends:
+        Navigator.pushReplacementNamed(context, AppRoutes.friends);
+        break;
     }
   }
 

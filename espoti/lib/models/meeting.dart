@@ -78,5 +78,28 @@ class MockMeetings {
       imageUrl: 'https://picsum.photos/seed/espoti2/300/200',
       status: MeetingStatus.upcoming,
     ),
+    Meeting(
+      placeName: 'Parque Nacional',
+      timeLabel: 'March 2 2026',
+      distanceLabel: '10km from your location',
+      avatarUrls: [
+        'https://i.pravatar.cc/100?img=4',
+        'https://i.pravatar.cc/100?img=5',
+      ],
+      rating: 5,
+      imageUrl: 'https://picsum.photos/seed/espoti3/300/200',
+      status: MeetingStatus.previous,
+    ),
+    Meeting(
+      placeName: 'Cinepolis',
+      timeLabel: 'Cancelled on Feb 28 2026',
+      distanceLabel: '5km from your location',
+      avatarUrls: [
+        'https://i.pravatar.cc/100?img=6',
+      ],
+      rating: 0,
+      imageUrl: 'https://picsum.photos/seed/espoti4/300/200',
+      status: MeetingStatus.canceled,
+    ),
   ];
 }

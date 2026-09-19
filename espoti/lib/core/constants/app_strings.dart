@@ -52,4 +52,16 @@ class AppStrings {
   static const String navMeetings = 'Meetings';
   static const String navFriends = 'Friends';
   static const String navProfile = 'Profile';
+
+  // Create Meeting
+  static const String createMeetingTitle = 'Create Meeting';
+  static const String meetingTitleLabel = 'Meeting Title';
+  static const String meetingTitleHint = 'E.g. Study session';
+  static const String locationLabel = 'Location or Reference';
+  static const String locationHint = 'E.g. Library, Cafe';
+  static const String timeLabel = 'Time or Duration';
+  static const String timeHint = 'E.g. 2 hours';
+  static const String notesLabel = 'Notes / Activity';
+  static const String notesHint = 'What are we going to do?';
+  static const String createButton = 'Create';
 }
