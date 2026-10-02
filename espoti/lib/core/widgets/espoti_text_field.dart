@@ -9,6 +9,7 @@ class EspotiTextField extends StatelessWidget {
   final TextEditingController controller;
   final bool obscureText;
   final String? errorText;
+  final String? hintText;
   final TextInputType keyboardType;
 
   const EspotiTextField({
@@ -17,6 +18,7 @@ class EspotiTextField extends StatelessWidget {
     required this.controller,
     this.obscureText = false,
     this.errorText,
+    this.hintText,
     this.keyboardType = TextInputType.text,
   });
 
@@ -41,6 +43,7 @@ class EspotiTextField extends StatelessWidget {
           style: const TextStyle(color: AppColors.text),
           decoration: InputDecoration(
             errorText: errorText,
+            hintText: hintText,
             filled: true,
             fillColor: AppColors.orange50,
             contentPadding: const EdgeInsets.symmetric(

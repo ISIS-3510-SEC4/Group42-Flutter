@@ -19,10 +19,10 @@ class ProfilePage extends StatelessWidget {
         Navigator.pushReplacementNamed(context, AppRoutes.meetings);
         break;
       case EspotiNavItem.profile:
-        break; 
+        break;
       case EspotiNavItem.createMeeting:
       case EspotiNavItem.friends:
-        break; 
+        break;
     }
   }
 
@@ -34,7 +34,8 @@ class ProfilePage extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -50,18 +51,22 @@ class ProfilePage extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(AppStrings.helloJulian, style: Theme.of(context).textTheme.headlineMedium),
+                  Text(AppStrings.helloJulian,
+                      style: Theme.of(context).textTheme.headlineMedium),
                   OutlinedButton(
-                    
-                    onPressed: null,
+                    onPressed: () {
+                      Navigator.pushNamed(context, AppRoutes.editProfile);
+                    },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primaryBrown,
                       side: const BorderSide(color: AppColors.primaryBrown),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
-                      ), 
+                        borderRadius:
+                            BorderRadius.circular(AppDimensions.radiusPill),
+                      ),
                     ),
-                    child: const Text(AppStrings.editProfile, style: TextStyle(fontSize: 12)),
+                    child: const Text(AppStrings.editProfile,
+                        style: TextStyle(fontSize: 12)),
                   ),
                 ],
               ),
@@ -78,7 +83,8 @@ class ProfilePage extends StatelessWidget {
                         width: 72,
                         height: 72,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const Icon(
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
                           Icons.person,
                           size: 36,
                           color: AppColors.primaryBrown,
@@ -93,7 +99,8 @@ class ProfilePage extends StatelessWidget {
                       children: [
                         const Text(
                           AppStrings.yourCode,
-                          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          style: TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary),
                         ),
                         Row(
                           children: [
@@ -105,12 +112,14 @@ class ProfilePage extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 6),
-                            const Icon(Icons.ios_share, size: 14, color: AppColors.orange),
+                            const Icon(Icons.ios_share,
+                                size: 14, color: AppColors.orange),
                           ],
                         ),
                         Text(
                           user.location,
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary),
                         ),
                       ],
                     ),
@@ -118,9 +127,12 @@ class ProfilePage extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: AppDimensions.paddingL),
-              _InfoRow(label: AppStrings.preferences, value: user.preferences.join(', ')),
+              _InfoRow(
+                  label: AppStrings.preferences,
+                  value: user.preferences.join(', ')),
               const SizedBox(height: AppDimensions.paddingS),
-              _InfoRow(label: AppStrings.maxRadius, value: '${user.maxRadiusKm} km'),
+              _InfoRow(
+                  label: AppStrings.maxRadius, value: '${user.maxRadiusKm} km'),
               const SizedBox(height: AppDimensions.paddingL),
               const _InviteCoffeeCard(),
               const SizedBox(height: AppDimensions.paddingL),
@@ -150,8 +162,12 @@ class _InfoRow extends StatelessWidget {
       text: TextSpan(
         style: const TextStyle(fontSize: 14, color: AppColors.text),
         children: [
-          TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
-          TextSpan(text: value, style: const TextStyle(color: AppColors.textSecondary)),
+          TextSpan(
+              text: '$label: ',
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          TextSpan(
+              text: value,
+              style: const TextStyle(color: AppColors.textSecondary)),
         ],
       ),
     );
@@ -180,12 +196,14 @@ class _InviteCoffeeCard extends StatelessWidget {
               children: [
                 Text(
                   AppStrings.inviteCoffee,
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700, color: AppColors.text),
                 ),
                 SizedBox(height: 2),
                 Text(
                   AppStrings.inviteCoffeeSubtitle,
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  style:
+                      TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -201,7 +219,8 @@ class _InviteCoffeeCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
               ),
             ),
-            child: const Text(AppStrings.support, style: TextStyle(fontSize: 12)),
+            child:
+                const Text(AppStrings.support, style: TextStyle(fontSize: 12)),
           ),
         ],
       ),
@@ -227,11 +246,11 @@ class _SettingsList extends StatelessWidget {
       children: _items
           .map(
             (item) => ListTile(
-              
               onTap: null,
               contentPadding: EdgeInsets.zero,
               leading: Icon(item.$2, color: AppColors.primaryBrown),
-              title: Text(item.$1, style: const TextStyle(color: AppColors.text)),
+              title:
+                  Text(item.$1, style: const TextStyle(color: AppColors.text)),
             ),
           )
           .toList(),
