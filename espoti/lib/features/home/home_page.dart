@@ -13,11 +13,10 @@ import '../../models/meeting.dart';
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
-
   void _handleNavTap(BuildContext context, EspotiNavItem item) {
     switch (item) {
       case EspotiNavItem.home:
-        break; 
+        break;
       case EspotiNavItem.meetings:
         Navigator.pushReplacementNamed(context, AppRoutes.meetings);
         break;
@@ -26,6 +25,7 @@ class HomePage extends StatelessWidget {
         break;
       case EspotiNavItem.createMeeting:
         Navigator.pushReplacementNamed(context, AppRoutes.createMeeting);
+        Navigator.pushNamed(context, AppRoutes.createMeeting);
         break;
       case EspotiNavItem.friends:
         Navigator.pushReplacementNamed(context, AppRoutes.friends);
@@ -39,7 +39,8 @@ class HomePage extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
+          padding:
+              const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -48,22 +49,23 @@ class HomePage extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   EspotiLogo(height: AppDimensions.logoSizeSmall),
-                
                   Icon(Icons.menu, color: AppColors.primaryBrown),
                 ],
               ),
               const SizedBox(height: AppDimensions.paddingM),
-              Text(AppStrings.greeting, style: Theme.of(context).textTheme.headlineMedium),
+              Text(AppStrings.greeting,
+                  style: Theme.of(context).textTheme.headlineMedium),
               const Text(
                 AppStrings.tagline,
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 15),
               ),
               const SizedBox(height: AppDimensions.paddingL),
-             //We need to add this after 
-              const EspotiButton(
+              //We need to add this after
+              EspotiButton(
                 label: AppStrings.createMeeting,
                 variant: EspotiButtonVariant.secondary,
-                onPressed: null,
+                onPressed: () =>
+                    Navigator.pushNamed(context, AppRoutes.createMeeting),
               ),
               const SizedBox(height: AppDimensions.paddingL),
               const SectionTitle(title: AppStrings.nextMeetings),
@@ -73,7 +75,8 @@ class HomePage extends StatelessWidget {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: MockMeetings.nextMeetings.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: AppDimensions.paddingM),
+                  separatorBuilder: (_, __) =>
+                      const SizedBox(width: AppDimensions.paddingM),
                   itemBuilder: (context, index) {
                     final meeting = MockMeetings.nextMeetings[index];
                     return SizedBox(
@@ -137,12 +140,14 @@ class _InviteCoffeeCard extends StatelessWidget {
               children: [
                 Text(
                   AppStrings.inviteCoffee,
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.text),
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700, color: AppColors.text),
                 ),
                 SizedBox(height: 2),
                 Text(
                   AppStrings.inviteCoffeeSubtitle,
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  style:
+                      TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -159,7 +164,8 @@ class _InviteCoffeeCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
               ),
             ),
-            child: const Text(AppStrings.support, style: TextStyle(fontSize: 12)),
+            child:
+                const Text(AppStrings.support, style: TextStyle(fontSize: 12)),
           ),
         ],
       ),
