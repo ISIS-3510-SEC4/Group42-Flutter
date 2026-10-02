@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
@@ -44,6 +45,13 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final routeArgs = ModalRoute.of(context)?.settings.arguments;
+    final args = routeArgs is Map ? Map<String, dynamic>.from(routeArgs) : <String, dynamic>{};
+    final activity = args['activity'] ?? '';
+    final day = args['day'] ?? '';
+    final time = args['time'] ?? '';
+    final location = args['location'] is LatLng ? args['location'] as LatLng : null;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -63,6 +71,39 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
               ),
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.youWillMeet, style: _sectionTitleStyle),
+              const SizedBox(height: AppDimensions.paddingM),
+              if (activity.isNotEmpty || day.isNotEmpty || time.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppDimensions.paddingM),
+                  decoration: BoxDecoration(
+                    color: AppColors.orange50,
+                    borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (activity.isNotEmpty)
+                        Text(
+                          'Activity: $activity',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.text,
+                          ),
+                        ),
+                      if (day.isNotEmpty || time.isNotEmpty)
+                        Text(
+                          'When: ${day.isNotEmpty ? day : 'Not specified'} • ${time.isNotEmpty ? time : 'Not specified'}',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      if (location != null)
+                        Text(
+                          'Location: ${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: AppDimensions.paddingM),
               const AttendeeAvatars(),
               const SizedBox(height: AppDimensions.paddingL),
