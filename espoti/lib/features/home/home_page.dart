@@ -24,9 +24,11 @@ class HomePage extends StatelessWidget {
         Navigator.pushReplacementNamed(context, AppRoutes.profile);
         break;
       case EspotiNavItem.createMeeting:
+        Navigator.pushReplacementNamed(context, AppRoutes.createMeeting);
         Navigator.pushNamed(context, AppRoutes.createMeeting);
         break;
       case EspotiNavItem.friends:
+        Navigator.pushReplacementNamed(context, AppRoutes.friends);
         break;
     }
   }
@@ -86,6 +88,9 @@ class HomePage extends StatelessWidget {
                         avatarUrls: meeting.avatarUrls,
                         extraParticipantsLabel: meeting.extraParticipantsLabel,
                         compact: true,
+                        onDetail: () {
+                          Navigator.pushNamed(context, AppRoutes.meetingDetail);
+                        },
                       ),
                     );
                   },

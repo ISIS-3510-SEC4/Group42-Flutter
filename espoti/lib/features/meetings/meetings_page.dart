@@ -29,8 +29,11 @@ class _MeetingsPageState extends State<MeetingsPage> {
         Navigator.pushReplacementNamed(context, AppRoutes.profile);
         break;
       case EspotiNavItem.createMeeting:
+        Navigator.pushReplacementNamed(context, AppRoutes.createMeeting);
+        break;
       case EspotiNavItem.friends:
-        break; 
+        Navigator.pushReplacementNamed(context, AppRoutes.friends);
+        break;
     }
   }
 
@@ -87,14 +90,98 @@ class _MeetingsPageState extends State<MeetingsPage> {
                       separatorBuilder: (_, __) => const SizedBox(height: AppDimensions.paddingM),
                       itemBuilder: (context, index) {
                         final meeting = meetings[index];
+                        
+                        Widget? bottomWidget;
+                        Color? bgColor;
+                        VoidCallback? onDetailAction;
+                        VoidCallback? onTakePhotoAction;
+                        
+                        if (meeting.status == MeetingStatus.canceled) {
+                          bgColor = Colors.grey.shade200;
+                          bottomWidget = Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade100,
+                              borderRadius: BorderRadius.circular(AppDimensions.radiusM),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text(
+                              'Canceled',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          );
+                        } else {
+                          onDetailAction = () {
+                            Navigator.pushNamed(context, AppRoutes.meetingDetail);
+                          };
+                          onTakePhotoAction = () {};
+                          
+                          if (meeting.status == MeetingStatus.previous) {
+                            bottomWidget = Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Memories',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.text,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: 60,
+                                        child: ListView.separated(
+                                          scrollDirection: Axis.horizontal,
+                                          itemCount: 4,
+                                          separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                          itemBuilder: (context, i) {
+                                            if (i == 3) {
+                                              return Container(
+                                                width: 60,
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.primaryBrown,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: const Icon(Icons.add, color: AppColors.white),
+                                              );
+                                            }
+                                            return ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Image.network(
+                                                'https://picsum.photos/seed/mem${index}_$i/100/100',
+                                                width: 60,
+                                                height: 60,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            );
+                          }
+                        }
+
                         return MeetingCard(
                           placeName: meeting.placeName,
                           line1: meeting.timeLabel,
                           line2: meeting.distanceLabel,
                           avatarUrls: meeting.avatarUrls,
                           rating: meeting.rating,
-                          onDetail: () {},
-                          onTakePhoto: () {},
+                          onDetail: onDetailAction,
+                          onTakePhoto: onTakePhotoAction,
+                          bottomWidget: bottomWidget,
+                          backgroundColor: bgColor,
                         );
                       },
                     ),

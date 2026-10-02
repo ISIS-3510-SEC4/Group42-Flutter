@@ -27,4 +27,10 @@ class AppColors {
 
   static const Color white = Color(0xFFFFFFFF);
   static const Color black = Color(0xFF000000);
+
+  /// Accent 1 (#FFEAAE) - Usado para contenedores informativos o decorativos.
+  static const Color accent1 = Color(0xFFFFEAAE);
+
+  /// Accent 2 (#BC7C9C) - Para avatares o acentos dinámicos.
+  static const Color accent2 = Color(0xFFBC7C9C);
 }

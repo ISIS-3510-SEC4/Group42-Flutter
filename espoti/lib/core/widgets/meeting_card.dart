@@ -13,6 +13,8 @@ class MeetingCard extends StatelessWidget {
   final bool compact;
   final VoidCallback? onDetail;
   final VoidCallback? onTakePhoto;
+  final Widget? bottomWidget;
+  final Color? backgroundColor;
 
   const MeetingCard({
     super.key,
@@ -25,6 +27,8 @@ class MeetingCard extends StatelessWidget {
     this.compact = false,
     this.onDetail,
     this.onTakePhoto,
+    this.bottomWidget,
+    this.backgroundColor,
   });
 
   @override
@@ -33,7 +37,7 @@ class MeetingCard extends StatelessWidget {
       width: compact ? null : double.infinity,
       padding: const EdgeInsets.all(AppDimensions.paddingM),
       decoration: BoxDecoration(
-        color: AppColors.orange50,
+        color: backgroundColor ?? AppColors.orange50,
         borderRadius: BorderRadius.circular(AppDimensions.radiusL),
       ),
       child: Column(
@@ -116,6 +120,10 @@ class MeetingCard extends StatelessWidget {
               ],
             ),
           ],
+          if (bottomWidget != null) ...[
+            const SizedBox(height: AppDimensions.paddingM),
+            bottomWidget!,
+          ]
         ],
       ),
     );

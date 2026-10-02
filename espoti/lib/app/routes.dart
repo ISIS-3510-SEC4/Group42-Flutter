@@ -8,6 +8,8 @@ import '../features/meetings/create_meeting_page.dart';
 import '../features/meetings/vote_meeting_page.dart';
 import '../features/meetings/winning_place_page.dart';
 import '../features/profile/profile_page.dart';
+import '../features/friends/friends_page.dart';
+import '../features/meetings/meeting_detail_page.dart';
 import '../features/profile/edit_profile_page.dart';
 
 class AppRoutes {
@@ -22,6 +24,10 @@ class AppRoutes {
   static const String voteMeeting = '/vote-meeting';
   static const String winningPlace = '/winning-place';
   static const String profile = '/profile';
+  static const String createMeeting = '/create_meeting';
+  static const String friends = '/friends';
+  static const String meetingDetail = '/meeting_detail';
+static const String createMeetingRecommendations = '/create-meeting-recommendations';
   static const String editProfile = '/edit-profile';
 
   /// Single source of truth mapping route names to their pages.
@@ -35,6 +41,8 @@ class AppRoutes {
         voteMeeting: (context) => const VoteMeetingPage(),
         winningPlace: (context) => const WinningPlacePage(),
         profile: (context) => const ProfilePage(),
+        friends: (context) => const FriendsPage(),
+        meetingDetail: (context) => const MeetingDetailPage(),
         editProfile: (context) => const EditProfilePage(),
       };
 }
