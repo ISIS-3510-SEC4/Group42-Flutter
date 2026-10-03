@@ -7,9 +7,16 @@ import '../../core/constants/app_strings.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../models/meeting.dart';
+import '../../core/analytics/analytics_tracker.dart';
 import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
 import 'nearby_recommendations_service.dart';
+import 'recommendation/meeting_schedule.dart';
+import 'recommendation/recommendation_strategy.dart';
+import 'recommendation/simulated_data.dart';
+import 'recommendation/weather_service.dart';
+
+enum _StrategyOption { closest, fair }
 
 class VoteMeetingPage extends StatefulWidget {
   const VoteMeetingPage({super.key});
@@ -21,7 +28,16 @@ class VoteMeetingPage extends StatefulWidget {
 class _VoteMeetingPageState extends State<VoteMeetingPage> {
   int _selectedIndex = 0;
   final _recommendationsService = NearbyRecommendationsService();
+  final _reviewTracker = RecommendationReviewTracker();
+  final _weatherService = WeatherService();
+  WeatherForecast? _forecast;
+  DateTime? _meetingMoment;
+  String _meetingWhenLabel = 'este momento';
   List<Meeting> _recommendations = const [];
+  List<Participant> _participants = const [];
+  List<PlaceCandidate> _candidates = const [];
+  _StrategyOption _strategyOption = _StrategyOption.fair;
+  bool _usingSamplePlaces = false;
   LatLng? _location;
   bool _isLoadingRecommendations = false;
   String? _recommendationsError;
@@ -43,6 +59,10 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
 
     final routeArgs = ModalRoute.of(context)?.settings.arguments;
     final args = routeArgs is Map ? routeArgs : const <dynamic, dynamic>{};
+    final day = args['day'] as String? ?? '';
+    final time = args['time'] as String? ?? '';
+    _meetingMoment = parseMeetingDateTime(day, time);
+    if (_meetingMoment != null) _meetingWhenLabel = '$day $time'.trim();
     final location = args['location'];
     if (location is LatLng) {
       _location = location;
@@ -53,7 +73,18 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   @override
   void dispose() {
     _recommendationsService.close();
+    _weatherService.close();
     super.dispose();
+  }
+
+  /// Rain forecast for the meeting time; null if the service is unavailable.
+  Future<WeatherForecast?> _loadForecast(LatLng location) async {
+    try {
+      return await _weatherService.forecastAt(
+          location, _meetingMoment ?? DateTime.now());
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _loadRecommendations(LatLng location) async {
@@ -62,13 +93,29 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       _recommendationsError = null;
     });
     try {
-      final recommendations =
-          await _recommendationsService.findNearbyPlaces(location);
+      final forecastFuture = _loadForecast(location);
+      final participants = await loadParticipants(location);
+      var candidates = const <PlaceCandidate>[];
+      var usingSamplePlaces = false;
+      try {
+        candidates = await _recommendationsService.findCandidates(
+          location,
+          radiusMeters: 2500,
+        );
+      } catch (_) {
+        candidates = samplePlacesAround(location);
+        usingSamplePlaces = true;
+      }
+      final forecast = await forecastFuture;
       if (!mounted) return;
       setState(() {
-        _recommendations = recommendations;
+        _forecast = forecast;
+        _participants = participants;
+        _candidates = candidates;
+        _usingSamplePlaces = usingSamplePlaces;
         _isLoadingRecommendations = false;
       });
+      _applyStrategy();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -77,6 +124,45 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
         _isLoadingRecommendations = false;
       });
     }
+  }
+
+  RecommendationStrategy get _strategy {
+    final base = switch (_strategyOption) {
+      _StrategyOption.closest => ClosestToPointStrategy(reference: _location!),
+      _StrategyOption.fair => const FairTravelStrategy(),
+    };
+    final forecast = _forecast;
+    if (forecast == null || !forecast.rainLikely) return base;
+    return RainAwareStrategy(
+      inner: base,
+      rainProbability: forecast.rainProbability,
+    );
+  }
+
+  /// Ranks the candidates with the selected strategy and shows the top 10.
+  void _applyStrategy() {
+    final ranked = _strategy.rank(_candidates, _participants).take(10);
+    final recommendations = [
+      for (final place in ranked)
+        Meeting(
+          placeName: place.place.name,
+          timeLabel: place.place.category,
+          distanceLabel: place.explanation,
+          rating: null,
+          imageUrl: '',
+        ),
+    ];
+    setState(() {
+      _recommendations = recommendations;
+      _selectedIndex = 0;
+    });
+    _reviewTracker.displayed(resultCount: recommendations.length);
+  }
+
+  void _selectStrategy(_StrategyOption option) {
+    if (option == _strategyOption || _location == null) return;
+    setState(() => _strategyOption = option);
+    _applyStrategy();
   }
 
   void _handleNavTap(EspotiNavItem item) {
@@ -106,7 +192,16 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       durationSeconds: diferenciaSegundos,
     );
 
+    if (_recommendations.isNotEmpty) {
+      _reviewTracker.selected(_recommendations[_selectedIndex].placeName);
+    }
+
     Navigator.pushNamed(context, AppRoutes.winningPlace);
+  }
+
+  void _viewRecommendation(int index) {
+    setState(() => _selectedIndex = index);
+    _reviewTracker.viewed(_recommendations[index].placeName);
   }
 
   @override
@@ -175,10 +270,52 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                 ),
               const SizedBox(height: AppDimensions.paddingM),
               const AttendeeAvatars(),
+              if (_participants.isNotEmpty) ...[
+                const SizedBox(height: AppDimensions.paddingS),
+                Text(
+                  'Participantes: ${_participants.map((p) => p.name).join(', ')} (Ana y Luis son simulados)',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ],
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.ourRecommendations,
                   style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
+              if (_location != null) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<_StrategyOption>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(
+                        value: _StrategyOption.closest,
+                        label: Text('Más cerca'),
+                      ),
+                      ButtonSegment(
+                        value: _StrategyOption.fair,
+                        label: Text('Más justo'),
+                      ),
+                    ],
+                    selected: {_strategyOption},
+                    onSelectionChanged: (selection) =>
+                        _selectStrategy(selection.first),
+                  ),
+                ),
+                const SizedBox(height: AppDimensions.paddingS),
+                Text(
+                  _strategy.description,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
+                ),
+                _WeatherNote(forecast: _forecast, whenLabel: _meetingWhenLabel),
+                if (_usingSamplePlaces)
+                  const Text(
+                    'No se pudo consultar el servicio de lugares: se muestran lugares de ejemplo.',
+                    style: TextStyle(fontSize: 12, color: AppColors.orange),
+                  ),
+                const SizedBox(height: AppDimensions.paddingM),
+              ],
               if (_isLoadingRecommendations)
                 const Center(child: CircularProgressIndicator())
               else if (_recommendationsError != null)
@@ -202,7 +339,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                   _RecommendationCard(
                     meeting: _recommendations[i],
                     selected: _selectedIndex == i,
-                    onTap: () => setState(() => _selectedIndex = i),
+                    onTap: () => _viewRecommendation(i),
                   ),
                   const SizedBox(height: AppDimensions.paddingM),
                 ],
@@ -257,6 +394,51 @@ const _sectionTitleStyle = TextStyle(
   fontSize: 16,
   color: AppColors.text,
 );
+
+/// Tells the user whether the weather changed the recommendations.
+class _WeatherNote extends StatelessWidget {
+  const _WeatherNote({required this.forecast, required this.whenLabel});
+
+  final WeatherForecast? forecast;
+  final String whenLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final forecast = this.forecast;
+    final (icon, message) = forecast == null
+        ? (
+            Icons.cloud_off_outlined,
+            'Clima no disponible: no se ajustó por lluvia.'
+          )
+        : forecast.rainLikely
+            ? (
+                Icons.umbrella_outlined,
+                'Lluvia probable (${forecast.rainProbability} %) para $whenLabel: los lugares al aire libre bajan en la lista.'
+              )
+            : (
+                Icons.wb_sunny_outlined,
+                'Sin lluvia probable (${forecast.rainProbability} %) para $whenLabel.'
+              );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppDimensions.paddingXS),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 16, color: AppColors.primaryBrown),
+          const SizedBox(width: AppDimensions.paddingXS),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                  fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _RecommendationsMessage extends StatelessWidget {
   const _RecommendationsMessage({required this.message, this.onRetry});
@@ -379,7 +561,7 @@ class _RecommendationCard extends StatelessWidget {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    onPressed: () {},
+                    onPressed: onTap,
                     icon: const Icon(
                       Icons.remove_red_eye_outlined,
                       color: AppColors.primaryBrown,
