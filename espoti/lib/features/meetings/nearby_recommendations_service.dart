@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../../models/meeting.dart';
+import 'recommendation/recommendation_strategy.dart';
 
 class NearbyRecommendationsService {
   NearbyRecommendationsService({http.Client? client})
@@ -11,7 +12,8 @@ class NearbyRecommendationsService {
 
   final http.Client _client;
 
-  Future<List<Meeting>> findNearbyPlaces(
+  /// Named places around [location], with coordinates and without ranking.
+  Future<List<PlaceCandidate>> findCandidates(
     LatLng location, {
     int radiusMeters = 1500,
   }) async {
@@ -43,8 +45,7 @@ out center tags;
           'Respuesta inválida del servicio de lugares.');
     }
 
-    const distance = Distance();
-    final places = <({Meeting meeting, double distanceKm})>[];
+    final candidates = <PlaceCandidate>[];
     for (final element in decoded['elements'] as List) {
       if (element is! Map<String, dynamic>) continue;
       final tags = element['tags'];
@@ -55,40 +56,41 @@ out center tags;
       final name = tags['name'];
       if (latitude is! num || longitude is! num || name is! String) continue;
 
-      final placePoint = LatLng(latitude.toDouble(), longitude.toDouble());
-      final distanceMeters =
-          distance.as(LengthUnit.Meter, location, placePoint);
-      final distanceKm = distanceMeters / 1000.0;
-      final category = switch (tags['amenity']) {
-        'cafe' => 'Cafetería',
-        'restaurant' => 'Restaurante',
-        'fast_food' => 'Comida rápida',
-        'bar' || 'pub' => 'Bar',
-        _ => 'Lugar cercano',
-      };
-      places.add((
-        meeting: Meeting(
-          placeName: name,
-          timeLabel: category,
-          distanceLabel: '${_formatDistance(distanceMeters)} del punto elegido',
-          rating: null,
-          imageUrl: '',
-        ),
-        distanceKm: distanceKm,
+      candidates.add(PlaceCandidate(
+        name: name,
+        category: switch (tags['amenity']) {
+          'cafe' => 'Cafetería',
+          'restaurant' => 'Restaurante',
+          'fast_food' => 'Comida rápida',
+          'bar' || 'pub' => 'Bar',
+          _ => 'Lugar cercano',
+        },
+        location: LatLng(latitude.toDouble(), longitude.toDouble()),
       ));
     }
+    return candidates;
+  }
 
-    places
-        .sort((first, second) => first.distanceKm.compareTo(second.distanceKm));
-    return places.take(10).map((place) => place.meeting).toList();
+  Future<List<Meeting>> findNearbyPlaces(
+    LatLng location, {
+    int radiusMeters = 1500,
+  }) async {
+    final candidates =
+        await findCandidates(location, radiusMeters: radiusMeters);
+    final ranked =
+        ClosestToPointStrategy(reference: location).rank(candidates, const []);
+
+    return ranked
+        .take(10)
+        .map((place) => Meeting(
+              placeName: place.place.name,
+              timeLabel: place.place.category,
+              distanceLabel: place.explanation,
+              rating: null,
+              imageUrl: '',
+            ))
+        .toList();
   }
 
   void close() => _client.close();
-}
-
-String _formatDistance(double distanceMeters) {
-  if (distanceMeters < 1000) {
-    return '${distanceMeters.round()} m';
-  }
-  return '${(distanceMeters / 1000).toStringAsFixed(2)} km';
 }
