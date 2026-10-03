@@ -49,6 +49,8 @@ List<PlaceCandidate> samplePlacesAround(LatLng center) {
     ('Comida rápida de ejemplo', 'Comida rápida', 0.018, 0.020),
     ('Bar de ejemplo Noreste', 'Bar', 0.022, 0.016),
     ('Café de ejemplo Sureste', 'Cafetería', -0.008, 0.020),
+    ('Parque de ejemplo Central', outdoorCategory, 0.006, 0.008),
+    ('Parque de ejemplo Sur', outdoorCategory, -0.006, 0.014),
   ];
   return [
     for (final (name, category, dLat, dLon) in offsets)

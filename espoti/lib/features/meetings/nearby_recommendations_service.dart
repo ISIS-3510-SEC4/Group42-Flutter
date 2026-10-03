@@ -23,6 +23,8 @@ class NearbyRecommendationsService {
   node(around:$radiusMeters,${location.latitude},${location.longitude})["amenity"~"restaurant|cafe|fast_food|bar|pub"]["name"];
   way(around:$radiusMeters,${location.latitude},${location.longitude})["amenity"~"restaurant|cafe|fast_food|bar|pub"]["name"];
   relation(around:$radiusMeters,${location.latitude},${location.longitude})["amenity"~"restaurant|cafe|fast_food|bar|pub"]["name"];
+  node(around:$radiusMeters,${location.latitude},${location.longitude})["leisure"="park"]["name"];
+  way(around:$radiusMeters,${location.latitude},${location.longitude})["leisure"="park"]["name"];
 );
 out center tags;
 ''';
@@ -58,13 +60,15 @@ out center tags;
 
       candidates.add(PlaceCandidate(
         name: name,
-        category: switch (tags['amenity']) {
-          'cafe' => 'Cafetería',
-          'restaurant' => 'Restaurante',
-          'fast_food' => 'Comida rápida',
-          'bar' || 'pub' => 'Bar',
-          _ => 'Lugar cercano',
-        },
+        category: tags['leisure'] == 'park'
+            ? outdoorCategory
+            : switch (tags['amenity']) {
+                'cafe' => 'Cafetería',
+                'restaurant' => 'Restaurante',
+                'fast_food' => 'Comida rápida',
+                'bar' || 'pub' => 'Bar',
+                _ => 'Lugar cercano',
+              },
         location: LatLng(latitude.toDouble(), longitude.toDouble()),
       ));
     }
