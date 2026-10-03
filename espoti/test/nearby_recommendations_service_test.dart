@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:espoti/features/meetings/nearby_recommendations_service.dart';
+import 'package:espoti/features/meetings/recommendation/recommendation_strategy.dart';
 
 void main() {
   test('calculates and displays each place distance from its own coordinates',
@@ -53,5 +54,28 @@ void main() {
       '40 m del punto elegido',
       '100 m del punto elegido',
     ]);
+  });
+
+  test('reads parks as outdoor candidates', () async {
+    final client = MockClient((request) async {
+      return http.Response(
+        jsonEncode({
+          'elements': [
+            {
+              'type': 'way',
+              'center': {'lat': 0.001, 'lon': 0},
+              'tags': {'name': 'Central Park', 'leisure': 'park'},
+            },
+          ],
+        }),
+        200,
+      );
+    });
+    final service = NearbyRecommendationsService(client: client);
+    addTearDown(service.close);
+
+    final candidates = await service.findCandidates(const LatLng(0, 0));
+
+    expect(candidates.single.category, outdoorCategory);
   });
 }
