@@ -7,6 +7,7 @@ import '../../core/constants/app_strings.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../models/meeting.dart';
+import '../../core/analytics/analytics_tracker.dart';
 import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
 import 'nearby_recommendations_service.dart';
@@ -21,6 +22,7 @@ class VoteMeetingPage extends StatefulWidget {
 class _VoteMeetingPageState extends State<VoteMeetingPage> {
   int _selectedIndex = 0;
   final _recommendationsService = NearbyRecommendationsService();
+  final _reviewTracker = RecommendationReviewTracker();
   List<Meeting> _recommendations = const [];
   LatLng? _location;
   bool _isLoadingRecommendations = false;
@@ -67,8 +69,10 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       if (!mounted) return;
       setState(() {
         _recommendations = recommendations;
+        _selectedIndex = 0;
         _isLoadingRecommendations = false;
       });
+      _reviewTracker.displayed(resultCount: recommendations.length);
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -106,7 +110,16 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       durationSeconds: diferenciaSegundos,
     );
 
+    if (_recommendations.isNotEmpty) {
+      _reviewTracker.selected(_recommendations[_selectedIndex].placeName);
+    }
+
     Navigator.pushNamed(context, AppRoutes.winningPlace);
+  }
+
+  void _viewRecommendation(int index) {
+    setState(() => _selectedIndex = index);
+    _reviewTracker.viewed(_recommendations[index].placeName);
   }
 
   @override
@@ -202,7 +215,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                   _RecommendationCard(
                     meeting: _recommendations[i],
                     selected: _selectedIndex == i,
-                    onTap: () => setState(() => _selectedIndex = i),
+                    onTap: () => _viewRecommendation(i),
                   ),
                   const SizedBox(height: AppDimensions.paddingM),
                 ],
@@ -379,7 +392,7 @@ class _RecommendationCard extends StatelessWidget {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    onPressed: () {},
+                    onPressed: onTap,
                     icon: const Icon(
                       Icons.remove_red_eye_outlined,
                       color: AppColors.primaryBrown,
