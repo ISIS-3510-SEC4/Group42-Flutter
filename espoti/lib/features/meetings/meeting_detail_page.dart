@@ -4,12 +4,28 @@ import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/widgets/avatar_group.dart';
 import '../../core/widgets/espoti_button.dart';
+import 'location_sync_widgets.dart';
 
 class MeetingDetailPage extends StatelessWidget {
   const MeetingDetailPage({super.key});
 
+  // The detail page has no real meeting id yet (data is mocked).
+  static const _fallbackMeetingId = 'restaurant-los-andes';
+
   @override
   Widget build(BuildContext context) {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final meetingId = (args is Map ? args['meetingId'] as String? : null) ??
+        _fallbackMeetingId;
+
+    // Active meeting: share location depending on movement (accelerometer).
+    return ActiveMeetingLocationSync(
+      meetingId: meetingId,
+      child: _buildScaffold(context, meetingId),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context, String meetingId) {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -34,24 +50,26 @@ class MeetingDetailPage extends StatelessWidget {
                 color: AppColors.accent1,
                 borderRadius: BorderRadius.circular(AppDimensions.radiusL),
               ),
-              child: Stack(
+              child: const Stack(
                 alignment: Alignment.center,
                 children: [
-                  const Icon(Icons.map, size: 64, color: AppColors.orange50),
+                  Icon(Icons.map, size: 64, color: AppColors.orange50),
                   // Fake pins
-                  Positioned(
+                  const Positioned(
                     top: 50,
                     left: 80,
-                    child: _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=1'),
+                    child: const _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=1'),
                   ),
-                  Positioned(
+                  const Positioned(
                     bottom: 60,
                     right: 90,
-                    child: _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=2'),
+                    child: const _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=2'),
                   ),
                 ],
               ),
             ),
+            const SizedBox(height: AppDimensions.paddingS),
+            LocationSyncStatusLine(meetingId: meetingId),
             const SizedBox(height: AppDimensions.paddingM),
             
             // Details
@@ -64,16 +82,16 @@ class MeetingDetailPage extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppDimensions.paddingS),
-            Row(
+            const Row(
               children: [
-                const Icon(Icons.star, color: AppColors.orange, size: 20),
-                const Text(
+                Icon(Icons.star, color: AppColors.orange, size: 20),
+                Text(
                   ' 4.0',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(width: AppDimensions.paddingL),
-                const Icon(Icons.timer, color: AppColors.primaryBrown, size: 20),
-                const Text(
+                SizedBox(width: AppDimensions.paddingL),
+                Icon(Icons.timer, color: AppColors.primaryBrown, size: 20),
+                Text(
                   ' 30 Minutes',
                   style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
                 ),

@@ -10,6 +10,9 @@ class Meeting {
   final String imageUrl;
   final MeetingStatus status;
 
+  /// Estimated cost per person (COP). Set by the budget recommendation.
+  final int? estimatedCostPerPerson;
+
   const Meeting({
     required this.placeName,
     required this.timeLabel,
@@ -19,7 +22,20 @@ class Meeting {
     this.rating,
     this.imageUrl = '',
     this.status = MeetingStatus.upcoming,
+    this.estimatedCostPerPerson,
   });
+
+  Meeting withEstimatedCost(int cost) => Meeting(
+        placeName: placeName,
+        timeLabel: timeLabel,
+        distanceLabel: distanceLabel,
+        avatarUrls: avatarUrls,
+        extraParticipantsLabel: extraParticipantsLabel,
+        rating: rating,
+        imageUrl: imageUrl,
+        status: status,
+        estimatedCostPerPerson: cost,
+      );
 }
 
 class MeetingReview {

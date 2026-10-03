@@ -7,19 +7,18 @@ import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_button.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../core/widgets/espoti_text_field.dart';
-
-import 'dart:async';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import '../../core/services/analytics_service.dart';
-import '../../core/services/routing_service.dart';
-import '../../core/services/place_search_service.dart';
+import '../../models/contact.dart';
+import 'budget_recommendation_service.dart';
+import 'contacts_picker_sheet.dart';
 
 //Esto lo pongo para tener un mapa real :D
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 
+/// "Create a meeting" screen (1). Arrive from the "+" button
+/// on the bottom nav. When you press Schedule, it goes to step 2 (vote).
 class CreateMeetingPage extends StatefulWidget {
   const CreateMeetingPage({super.key});
 
@@ -31,23 +30,118 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
   final _activityController = TextEditingController(text: 'Eat');
   final _dayController = TextEditingController(text: 'Sunday');
   final _timeController = TextEditingController(text: '2:00 pm');
+  final _budgetController = TextEditingController();
   //El ? es porque puede quedar vacía
   LatLng? _selectedLocation;
-  late DateTime _horaEntrada;
+
+  // Sprint 2: invitees from Google Contacts + per-participant max budgets.
+  List<GoogleContact> _invitees = const [];
+  final Map<String, int> _inviteeBudgets = {};
+
+  // Sprint 2: funnel analytics.
+  bool _advanced = false;
 
   @override
   void initState() {
     super.initState();
-    // REGISTRO DE TIEMPO: Hora exacta de entrada a la pantalla
-    _horaEntrada = DateTime.now();
+    AnalyticsService()
+      ..meetingPlanningStarted()
+      ..stepViewed(MeetingPlanningStep.details);
   }
 
   @override
   void dispose() {
+    if (!_advanced) {
+      AnalyticsService().stepAbandoned(
+        MeetingPlanningStep.details,
+        extra: {'has_location': _selectedLocation != null ? 1 : 0},
+      );
+    }
     _activityController.dispose();
     _dayController.dispose();
     _timeController.dispose();
+    _budgetController.dispose();
     super.dispose();
+  }
+
+  int? _parseBudget(String text) {
+    final digits = text.replaceAll(RegExp(r'[^0-9]'), '');
+    return digits.isEmpty ? null : int.tryParse(digits);
+  }
+
+  Future<void> _pickContacts() async {
+    final selected =
+        await showContactsPicker(context, initiallySelected: _invitees);
+    if (selected == null || !mounted) return;
+    setState(() {
+      _invitees = selected;
+      _inviteeBudgets.removeWhere((id, _) => !selected.any((c) => c.id == id));
+    });
+  }
+
+  Future<void> _editInviteeBudget(GoogleContact contact) async {
+    final controller = TextEditingController(
+        text: _inviteeBudgets[contact.id]?.toString() ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(contact.displayName),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: AppStrings.maxBudgetLabel,
+            hintText: AppStrings.maxBudgetHint,
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, controller.text),
+              child: const Text(AppStrings.save)),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result == null || !mounted) return;
+    final budget = _parseBudget(result);
+    setState(() {
+      budget == null
+          ? _inviteeBudgets.remove(contact.id)
+          : _inviteeBudgets[contact.id] = budget;
+    });
+  }
+
+  Future<void> _handleSchedule() async {
+    // Everyone's maximum budget -> one compatible budget per person.
+    final budget = BudgetRecommendationService.compatibleBudget([
+      _parseBudget(_budgetController.text),
+      ..._inviteeBudgets.values,
+    ]);
+    _advanced = true;
+    AnalyticsService().stepCompleted(
+      MeetingPlanningStep.details,
+      extra: {
+        'invitees': _invitees.length,
+        'has_budget': budget != null ? 1 : 0,
+      },
+    );
+    await Navigator.pushNamed(
+      context,
+      AppRoutes.voteMeeting,
+      arguments: {
+        'activity': _activityController.text,
+        'day': _dayController.text,
+        'time': _timeController.text,
+        'location': _selectedLocation,
+        'budget': budget,
+        'invitees': _invitees,
+      },
+    );
+    // Came back from the next step: this step is open again.
+    _advanced = false;
   }
 
   void _handleNavTap(EspotiNavItem item) {
@@ -64,7 +158,7 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
       case EspotiNavItem.createMeeting:
         break;
       case EspotiNavItem.friends:
-        break;
+        break; // TODO:  Add Friends Screen here once it exists
     }
   }
 
@@ -94,14 +188,19 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
               ),
               const SizedBox(height: AppDimensions.paddingL),
 
+              // Who will go?
               const Text(
                 AppStrings.whoWillGo,
                 style: TextStyle(fontSize: 15, color: AppColors.text),
               ),
               const SizedBox(height: AppDimensions.paddingS),
-              const _WhoWillGoRow(),
+              _WhoWillGoRow(
+                invitees: _invitees,
+                budgets: _inviteeBudgets,
+                onAdd: _pickContacts,
+                onEditBudget: _editInviteeBudget,
+              ),
               const SizedBox(height: AppDimensions.paddingL),
-
               EspotiTextField(
                 label: AppStrings.whatWillWeDo,
                 controller: _activityController,
@@ -114,15 +213,33 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
                 label: AppStrings.whatTime,
                 controller: _timeController,
               ),
+              EspotiTextField(
+                label: AppStrings.maxBudgetLabel,
+                controller: _budgetController,
+                keyboardType: TextInputType.number,
+                hintText: AppStrings.maxBudgetHint,
+              ),
 
               const SizedBox(height: AppDimensions.paddingS),
-              const Text(
-                AppStrings.selectYourLocation,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.text,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    AppStrings.selectYourLocation,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.text,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      // TODO: open location picker when it exists (google_maps_flutter / flutter_map)
+                    },
+                    icon: const Icon(Icons.search,
+                        color: Color.fromARGB(255, 143, 64, 11)),
+                  ),
+                ],
               ),
               const SizedBox(height: AppDimensions.paddingS),
               _LocationMapPreview(
@@ -141,28 +258,7 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
                   label: AppStrings.schedule,
                   variant: EspotiButtonVariant.secondary,
                   width: 160,
-                  onPressed: _selectedLocation == null
-                      ? null
-                      : () {
-                          // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
-                          final horaSalida = DateTime.now();
-                          final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
-                          AnalyticsService().logStepTime(
-                            stepName: 'creacion_reunion_paso_1_formulario',
-                            durationSeconds: diferenciaSegundos,
-                          );
-
-                          Navigator.pushNamed(
-                            context,
-                            AppRoutes.voteMeeting,
-                            arguments: {
-                              'activity': _activityController.text,
-                              'day': _dayController.text,
-                              'time': _timeController.text,
-                              'location': _selectedLocation,
-                            },
-                          );
-                        },
+                  onPressed: _selectedLocation == null ? null : _handleSchedule,
                 ),
               ),
               const SizedBox(height: AppDimensions.paddingXL),
@@ -179,11 +275,24 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
 }
 
 class _WhoWillGoRow extends StatelessWidget {
-  const _WhoWillGoRow();
+  final List<GoogleContact> invitees;
+  final Map<String, int> budgets;
+  final VoidCallback onAdd;
+  final void Function(GoogleContact) onEditBudget;
+
+  const _WhoWillGoRow({
+    required this.invitees,
+    required this.budgets,
+    required this.onAdd,
+    required this.onEditBudget,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: AppDimensions.paddingS,
+      runSpacing: AppDimensions.paddingS,
       children: [
         Container(
           width: AppDimensions.avatarSize + 8,
@@ -194,9 +303,28 @@ class _WhoWillGoRow extends StatelessWidget {
           ),
           child: const Icon(Icons.person, color: AppColors.primaryBrown),
         ),
-        const SizedBox(width: AppDimensions.paddingM),
+        for (final c in invitees)
+          ActionChip(
+            avatar: CircleAvatar(
+              backgroundColor: AppColors.mauve30,
+              backgroundImage:
+                  c.photoUrl.isNotEmpty ? NetworkImage(c.photoUrl) : null,
+              child: c.photoUrl.isEmpty
+                  ? const Icon(Icons.person,
+                      size: 14, color: AppColors.primaryBrown)
+                  : null,
+            ),
+            label: Text(
+              budgets[c.id] == null
+                  ? c.displayName
+                  : '${c.displayName} · \$${BudgetRecommendationService.formatCop(budgets[c.id]!)}',
+            ),
+            backgroundColor: AppColors.orange50,
+            side: BorderSide.none,
+            onPressed: () => onEditBudget(c),
+          ),
         GestureDetector(
-          onTap: () {},
+          onTap: onAdd,
           child: const Icon(
             Icons.add_circle,
             color: AppColors.primaryBrown,
@@ -223,77 +351,14 @@ class _LocationMapPreview extends StatefulWidget {
 
 class _LocationMapPreviewState extends State<_LocationMapPreview> {
   LatLng? _selectedPosition;
-  LatLng? _userGpsPosition;
   LatLng _mapCenter = const LatLng(4.6097, -74.0817);
   bool _isLoading = true;
-  bool _isLoadingRoute = false;
-  List<LatLng> _routePoints = [];
-  String? _suggestionText;
-  double? _distanceKm;
   final MapController _mapController = MapController();
-
-  final TextEditingController _searchController = TextEditingController();
-  List<PlaceSuggestion> _suggestions = [];
-  bool _isSearching = false;
-  Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
     _getCurrentGPSLocation();
-  }
-
-  @override
-  void dispose() {
-    _debounceTimer?.cancel();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _onSearchChanged(String query) {
-    _debounceTimer?.cancel();
-    if (query.trim().length < 2) {
-      setState(() {
-        _suggestions = [];
-        _isSearching = false;
-      });
-      return;
-    }
-
-    _debounceTimer = Timer(const Duration(milliseconds: 350), () async {
-      if (!mounted) return;
-      setState(() {
-        _isSearching = true;
-      });
-
-      final results = await PlaceSearchService().searchPlaces(
-        query,
-        userLocation: _userGpsPosition ?? _mapCenter,
-      );
-
-      if (mounted) {
-        setState(() {
-          _suggestions = results;
-          _isSearching = false;
-        });
-      }
-    });
-  }
-
-  void _seleccionarLugar(PlaceSuggestion suggestion) {
-    setState(() {
-      _searchController.text = suggestion.title;
-      _suggestions = [];
-      _selectedPosition = suggestion.point;
-    });
-
-    FocusScope.of(context).unfocus();
-    _mapController.move(suggestion.point, 15.5);
-
-    if (widget.onLocationSelected != null) {
-      widget.onLocationSelected!(suggestion.point);
-    }
-    _actualizarRutaYSugerencia(suggestion.point);
   }
 
   Future<void> _getCurrentGPSLocation() async {
@@ -337,14 +402,9 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
       LatLng latLng = LatLng(position.latitude, position.longitude);
 
       setState(() {
-        _userGpsPosition = latLng;
         _mapCenter = latLng;
         _isLoading = false;
       });
-
-      if (_selectedPosition != null) {
-        _actualizarRutaYSugerencia(_selectedPosition!);
-      }
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -352,265 +412,24 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
     }
   }
 
-  Future<List<LatLng>> getRoutePoints(LatLng start, LatLng end) async {
-    final url = Uri.parse(
-      'https://router.project-osrm.org/route/v1/driving/'
-      '${start.longitude},${start.latitude};${end.longitude},${end.latitude}'
-      '?overview=full&geometries=geojson',
-    );
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final List coordinates = data['routes'][0]['geometry']['coordinates'];
-      return coordinates.map((c) => LatLng(c[1], c[0])).toList();
-    }
-    return [];
-  }
-
-  // Algoritmo de sugerencia según la distancia recorrida
-  String _obtenerSugerencia(double distanciaKm) {
-    if (distanciaKm < 1.5) {
-      return 'Sugerencia: Ir a pie (aprox. 15 min)';
-    } else if (distanciaKm <= 8.0) {
-      return 'Sugerencia: Transporte Público / Bicicleta (aprox. 25 min)';
-    } else {
-      return 'Sugerencia: Vehículo / Taxi (aprox. 35 min)';
-    }
-  }
-
-  Future<void> _actualizarRutaYSugerencia(LatLng destination) async {
-    final start = _userGpsPosition ?? _mapCenter;
-    setState(() {
-      _isLoadingRoute = true;
-    });
-
-    try {
-      final distanciaMetros = Geolocator.distanceBetween(
-        start.latitude,
-        start.longitude,
-        destination.latitude,
-        destination.longitude,
-      );
-      final distanciaKm = distanciaMetros / 1000.0;
-      final puntos = await getRoutePoints(start, destination);
-
-      if (mounted) {
-        setState(() {
-          _routePoints = puntos.isNotEmpty ? puntos : [start, destination];
-          _distanceKm = distanciaKm;
-          _suggestionText = _obtenerSugerencia(distanciaKm);
-          _isLoadingRoute = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        final distanciaMetros = Geolocator.distanceBetween(
-          start.latitude,
-          start.longitude,
-          destination.latitude,
-          destination.longitude,
-        );
-        final distanciaKm = distanciaMetros / 1000.0;
-        setState(() {
-          _routePoints = [start, destination];
-          _distanceKm = distanciaKm;
-          _suggestionText = _obtenerSugerencia(distanciaKm);
-          _isLoadingRoute = false;
-        });
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Buscador y autocompletado de lugares y direcciones
-        Container(
-          margin: const EdgeInsets.only(bottom: 8.0),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: TextField(
-            controller: _searchController,
-            onChanged: _onSearchChanged,
-            decoration: InputDecoration(
-              hintText: 'Buscar lugar o dirección (ej. Centro Comercial)...',
-              hintStyle: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-              prefixIcon: const Icon(
-                Icons.search,
-                color: Color.fromARGB(255, 143, 64, 11),
-                size: 20,
-              ),
-              suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear, size: 18, color: Colors.grey),
-                      onPressed: () {
-                        _searchController.clear();
-                        setState(() {
-                          _suggestions = [];
-                        });
-                      },
-                    )
-                  : null,
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 12,
-              ),
-            ),
-          ),
-        ),
-
-        // Indicador de búsqueda activa
-        if (_isSearching)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 6.0),
-            child: LinearProgressIndicator(
-              color: Color(0xFFFF6B00),
-              backgroundColor: AppColors.mauve30,
-            ),
-          ),
-
-        // Lista de sugerencias desplegables
-        if (_suggestions.isNotEmpty)
-          Container(
-            margin: const EdgeInsets.only(bottom: 8.0),
-            constraints: const BoxConstraints(maxHeight: 180),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 6,
-                  offset: Offset(0, 3),
-                ),
-              ],
-            ),
-            child: ListView.separated(
-              shrinkWrap: true,
-              padding: EdgeInsets.zero,
-              itemCount: _suggestions.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final suggestion = _suggestions[index];
-                return ListTile(
-                  dense: true,
-                  leading: const Icon(
-                    Icons.location_on_outlined,
-                    color: Color(0xFFFF6B00),
-                    size: 22,
-                  ),
-                  title: Text(
-                    suggestion.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      color: AppColors.text,
-                    ),
-                  ),
-                  subtitle: suggestion.subtitle.isNotEmpty
-                      ? Text(
-                          suggestion.subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
-                        )
-                      : null,
-                  onTap: () {
-                    _seleccionarLugar(suggestion);
-                  },
-                );
-              },
-            ),
-          ),
-
-        Container(
-          height: 220,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: _buildMapContent(),
-        ),
-        if (_isLoadingRoute)
-          const Padding(
-            padding: EdgeInsets.only(top: 8.0),
-            child: Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Color(0xFFFF6B00),
-                ),
-              ),
-            ),
-          )
-        else if (_suggestionText != null) ...[
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              color: AppColors.accent1,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFFF6B00).withValues(alpha: 0.4)),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  RoutingService.getSuggestionIcon(_distanceKm ?? 0.0),
-                  color: AppColors.primaryBrown,
-                  size: 26,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _suggestionText!,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.primaryBrown,
-                        ),
-                      ),
-                      if (_distanceKm != null)
-                        Text(
-                          'Distancia estimada: ${_distanceKm!.toStringAsFixed(1)} km',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
+    return Container(
+      height: 220,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: _buildMapContent(),
     );
   }
 
   Widget _buildMapContent() {
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: AppColors.orange),
+        child:
+            CircularProgressIndicator(color: Color.fromARGB(0, 202, 106, 50)),
       );
     }
 
@@ -624,13 +443,10 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
             onTap: (tapPosition, point) {
               setState(() {
                 _selectedPosition = point;
-                _suggestions = [];
-                _searchController.text = 'Ubicación seleccionada en mapa';
               });
               if (widget.onLocationSelected != null) {
                 widget.onLocationSelected!(point);
               }
-              _actualizarRutaYSugerencia(point);
             },
           ),
           children: [
@@ -638,47 +454,21 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.example.espoti',
             ),
-            PolylineLayer(
-              polylines: [
-                Polyline(
-                  points: _routePoints, // Lista de LatLng devuelta por OSRM
-                  strokeWidth: 4.0,
-                  color: const Color(0xFFFF6B00),
-                ),
-              ],
-            ),
-            MarkerLayer(
-              markers: [
-                if (_userGpsPosition != null)
-                  Marker(
-                    point: _userGpsPosition!,
-                    width: 36,
-                    height: 36,
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        color: AppColors.primaryBrown,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.my_location,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                if (_selectedPosition != null)
+            if (_selectedPosition != null)
+              MarkerLayer(
+                markers: [
                   Marker(
                     point: _selectedPosition!,
                     width: 40,
                     height: 40,
                     child: const Icon(
                       Icons.location_on,
-                      color: AppColors.orange,
+                      color: Color.fromARGB(255, 121, 76, 44),
                       size: 40,
                     ),
                   ),
-              ],
-            ),
+                ],
+              ),
           ],
         ),
         Positioned(

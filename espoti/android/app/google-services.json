@@ -12,7 +12,20 @@
           "package_name": "com.example.espoti"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1001218826519-2v2s1gerhjnoms1as87f0maslcu3jna7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.espoti",
+            "certificate_hash": "ad3f7412cb4ab94843c3ee970047f9e94fc604a2"
+          }
+        },
+        {
+          "client_id": "1001218826519-rrv4e5np7cijmlp20u4tjnbjdn05fk61.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB6NKw7hvUSzy4AuAYHAdUNiIMPGqVIWJw"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1001218826519-rrv4e5np7cijmlp20u4tjnbjdn05fk61.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

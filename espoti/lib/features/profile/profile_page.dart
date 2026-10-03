@@ -261,6 +261,7 @@ class _SettingsList extends StatelessWidget {
               onTap: item.$1 == AppStrings.logOut
                   ? () async {
                       await AuthService().signOut();
+                      await UserService().clearUser();
                       if (context.mounted) {
                         Navigator.pushNamedAndRemoveUntil(
                           context,

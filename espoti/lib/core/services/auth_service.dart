@@ -1,4 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -7,12 +9,17 @@ class AuthService {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  /// Stream to listen to real-time authentication state changes.
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
+  /// Currently logged in user, or null if unauthenticated.
   User? get currentUser => _auth.currentUser;
 
+  /// Whether a user is currently logged in.
   bool get isAuthenticated => _auth.currentUser != null;
+  GoogleSignInAccount? get googleAccount => _googleAccount;
 
+  /// Sign in with email and password.
   Future<UserCredential> signInWithEmailAndPassword({
     required String email,
     required String password,
@@ -28,15 +35,11 @@ class AuthService {
     }
   }
 
+  /// Register a new account with email and password.
   Future<UserCredential> registerWithEmailAndPassword({
     required String email,
     required String password,
   }) async {
-    final passwordError = validatePassword(password);
-    if (passwordError != null) {
-      throw passwordError;
-    }
-
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -48,10 +51,64 @@ class AuthService {
     }
   }
 
+  Future<void>? _googleInit;
+  GoogleSignInAccount? _googleAccount;
+
+  /// Google Sign-In instance, initialized once. On Android the client id is
+  /// taken from google-services.json (default_web_client_id); an optional
+  /// override can be passed with --dart-define=GOOGLE_SERVER_CLIENT_ID=...
+  Future<GoogleSignIn> get googleSignIn async {
+    const serverClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+    _googleInit ??= GoogleSignIn.instance.initialize(
+      serverClientId: serverClientId.isEmpty ? null : serverClientId,
+    );
+    try {
+      await _googleInit;
+    } catch (_) {
+      _googleInit = null; // allow retry
+      rethrow;
+    }
+    return GoogleSignIn.instance;
+  }
+
+  /// Sign in with Google through the existing Firebase Auth project.
+  /// Returns null if the user cancels; throws a readable String on errors.
+  Future<UserCredential?> signInWithGoogle() async {
+    try {
+      final google = await googleSignIn;
+      if (!google.supportsAuthenticate()) {
+        throw 'Google Sign-In no está disponible en esta plataforma.';
+      }
+      final account = await google.authenticate();
+      _googleAccount = account;
+      final idToken = account.authentication.idToken;
+      if (idToken == null) {
+        throw 'No se pudo obtener la credencial de Google. Inténtalo de nuevo.';
+      }
+      return await _auth.signInWithCredential(
+        GoogleAuthProvider.credential(idToken: idToken),
+      );
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) return null;
+      debugPrint('Google sign-in error: ${e.code} ${e.description}');
+      throw 'No se pudo iniciar sesión con Google. Verifica tu conexión y la configuración de la app.';
+    } on FirebaseAuthException catch (e) {
+      throw getReadableAuthError(e);
+    }
+  }
+
+  /// Sign out the current user (Firebase and Google session).
   Future<void> signOut() async {
+    try {
+      await (await googleSignIn).signOut();
+    } catch (e) {
+      debugPrint('Google sign-out skipped: $e');
+    }
+    _googleAccount = null;
     await _auth.signOut();
   }
 
+  /// Validates that an email has a proper syntax and a valid domain with a TLD.
   static bool isValidEmailDomain(String email) {
     final trimmed = email.trim();
     final regex = RegExp(
@@ -67,25 +124,7 @@ class AuthService {
     return true;
   }
 
-  static String? validatePassword(String password) {
-    if (password.isEmpty) {
-      return 'La contraseña es obligatoria';
-    }
-    if (password.length < 8) {
-      return 'La contraseña debe tener mínimo 8 caracteres';
-    }
-    if (!password.contains(RegExp(r'[A-Z]'))) {
-      return 'La contraseña debe tener mínimo una letra mayúscula';
-    }
-    if (!password.contains(RegExp(r'[a-z]'))) {
-      return 'La contraseña debe tener mínimo una letra minúscula';
-    }
-    if (!RegExp(r'^[a-zA-Z0-9.]+$').hasMatch(password)) {
-      return 'La contraseña no puede tener caracteres especiales ni emojis, solo punto (.)';
-    }
-    return null;
-  }
-
+  /// Translates common Firebase auth error codes into friendly Spanish messages.
   static String getReadableAuthError(FirebaseAuthException exception) {
     switch (exception.code) {
       case 'user-not-found':
@@ -98,7 +137,7 @@ class AuthService {
       case 'invalid-email':
         return 'El formato del correo electrónico no es válido.';
       case 'weak-password':
-        return 'La contraseña debe tener mínimo 8 caracteres, mayúscula, minúscula y solo punto (.)';
+        return 'La contraseña es muy débil. Debe tener al menos 6 caracteres.';
       case 'user-disabled':
         return 'Esta cuenta ha sido inhabilitada.';
       case 'network-request-failed':

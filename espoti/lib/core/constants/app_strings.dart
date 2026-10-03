@@ -62,6 +62,11 @@ class AppStrings {
   static const String whatTime = 'What time?';
   static const String selectYourLocation = 'Select your location';
   static const String schedule = 'Schedule';
+  static const String maxBudgetLabel = 'Maximum budget per person (COP)';
+  static const String maxBudgetHint = 'E.g. 50000 (optional)';
+  static const String inviteContacts = 'Invite from Google Contacts';
+  static const String selectContacts = 'Select contacts';
+  static const String done = 'Done';
 
   static const String youWillMeet = 'You will meet:';
   static const String ourRecommendations = 'Our recommendations:';

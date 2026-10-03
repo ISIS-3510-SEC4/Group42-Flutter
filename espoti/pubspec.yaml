@@ -17,7 +17,11 @@ dependencies:
   firebase_core: ^4.15.0
   firebase_auth: ^6.7.0
   shared_preferences: ^2.5.5
-  firebase_analytics: ^12.6.0
+  # Sprint 2 (Laura Sofia Vallejo)
+  sensors_plus: ^6.1.1
+  google_sign_in: ^7.2.0
+  firebase_analytics: ^12.0.0
+  cloud_firestore: ^6.0.0
 
 dev_dependencies:
   flutter_test:

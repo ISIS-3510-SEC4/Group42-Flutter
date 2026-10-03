@@ -12,8 +12,6 @@ import '../../core/services/auth_service.dart';
 import '../../core/services/user_service.dart';
 import '../../models/user.dart';
 
-import '../../core/services/analytics_service.dart';
-
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
@@ -30,8 +28,6 @@ class _RegisterPageState extends State<RegisterPage> {
   final _confirmPasswordController = TextEditingController();
   final _authService = AuthService();
 
-  late DateTime _horaEntrada;
-
   String _avatarUrl = 'https://i.pravatar.cc/200?img=13';
   List<String> _selectedPreferences = ['Walk', 'Eat'];
 
@@ -43,13 +39,6 @@ class _RegisterPageState extends State<RegisterPage> {
   String? _confirmPasswordError;
   String? _preferencesError;
   bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // REGISTRO DE TIEMPO: Hora exacta de entrada a la pantalla
-    _horaEntrada = DateTime.now();
-  }
 
   @override
   void dispose() {
@@ -86,7 +75,11 @@ class _RegisterPageState extends State<RegisterPage> {
           ? 'Los correos no coinciden'
           : null;
 
-      _passwordError = AuthService.validatePassword(_passwordController.text);
+      _passwordError = _passwordController.text.isEmpty
+          ? 'La contraseña es obligatoria'
+          : (_passwordController.text.length < 6
+              ? 'La contraseña debe tener al menos 6 caracteres'
+              : null);
 
       _confirmPasswordError = _confirmPasswordController.text != _passwordController.text
           ? 'Las contraseñas no coinciden'
@@ -106,14 +99,6 @@ class _RegisterPageState extends State<RegisterPage> {
         _preferencesError == null;
 
     if (!isValid) return;
-
-    // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
-    final horaSalida = DateTime.now();
-    final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
-    AnalyticsService().logStepTime(
-      stepName: 'registro_usuario',
-      durationSeconds: diferenciaSegundos,
-    );
 
     setState(() => _isLoading = true);
 
@@ -149,7 +134,7 @@ class _RegisterPageState extends State<RegisterPage> {
     } catch (e) {
       if (mounted) {
         final errorMsg = e.toString();
-        // Si el error indica que el correo ya está registrado, mostrarlo en el campo de correo
+        // If the error indicates email already exists, highlight it on the email field
         if (errorMsg.contains('ya está registrado')) {
           setState(() => _emailError = errorMsg);
         }

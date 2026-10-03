@@ -7,10 +7,13 @@ import '../../core/constants/app_strings.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../models/meeting.dart';
-import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
+import '../../core/services/analytics_service.dart';
+import 'budget_recommendation_service.dart';
 import 'nearby_recommendations_service.dart';
 
+/// "Create a meeting" (2) — shows the attendees and the
+/// recommendations of places to vote. Without backend, recommendations are mocked.
 class VoteMeetingPage extends StatefulWidget {
   const VoteMeetingPage({super.key});
 
@@ -26,13 +29,14 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   bool _isLoadingRecommendations = false;
   String? _recommendationsError;
   bool _didLoadRouteArguments = false;
-  late DateTime _horaEntrada;
+  int? _budget; // compatible max budget per person (COP), if any
+  bool _budgetRelaxed = false;
+  bool _advanced = false;
 
   @override
   void initState() {
     super.initState();
-    // REGISTRO DE TIEMPO: Hora exacta de entrada a la pantalla
-    _horaEntrada = DateTime.now();
+    AnalyticsService().stepViewed(MeetingPlanningStep.vote);
   }
 
   @override
@@ -44,6 +48,8 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     final routeArgs = ModalRoute.of(context)?.settings.arguments;
     final args = routeArgs is Map ? routeArgs : const <dynamic, dynamic>{};
     final location = args['location'];
+    final budget = args['budget'];
+    if (budget is int) _budget = budget;
     if (location is LatLng) {
       _location = location;
       _loadRecommendations(location);
@@ -52,6 +58,9 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
 
   @override
   void dispose() {
+    if (!_advanced) {
+      AnalyticsService().stepAbandoned(MeetingPlanningStep.vote);
+    }
     _recommendationsService.close();
     super.dispose();
   }
@@ -65,8 +74,13 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       final recommendations =
           await _recommendationsService.findNearbyPlaces(location);
       if (!mounted) return;
+      // Budget-based affordability filter on top of the nearby results.
+      final result =
+          BudgetRecommendationService.apply(recommendations, _budget);
       setState(() {
-        _recommendations = recommendations;
+        _recommendations = result.places;
+        _budgetRelaxed = result.relaxed;
+        _selectedIndex = 0;
         _isLoadingRecommendations = false;
       });
     } catch (_) {
@@ -93,19 +107,16 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       case EspotiNavItem.createMeeting:
         break;
       case EspotiNavItem.friends:
-        break;
+        break; // TODO: Friends Screen, when it exists
     }
   }
 
   void _handleVote() {
-    // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
-    final horaSalida = DateTime.now();
-    final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
-    AnalyticsService().logStepTime(
-      stepName: 'creacion_reunion_paso_2_votacion',
-      durationSeconds: diferenciaSegundos,
-    );
-
+    _advanced = true;
+    AnalyticsService()
+      ..stepCompleted(MeetingPlanningStep.vote)
+      ..stepViewed(MeetingPlanningStep.result)
+      ..planningCompleted();
     Navigator.pushNamed(context, AppRoutes.winningPlace);
   }
 
@@ -164,6 +175,12 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                           style:
                               const TextStyle(color: AppColors.textSecondary),
                         ),
+                      if (_budget != null)
+                        Text(
+                          'Presupuesto compatible: hasta \$${BudgetRecommendationService.formatCop(_budget!)} COP por persona',
+                          style:
+                              const TextStyle(color: AppColors.textSecondary),
+                        ),
                       if (_location != null)
                         Text(
                           'Punto elegido: ${_location!.latitude.toStringAsFixed(4)}, ${_location!.longitude.toStringAsFixed(4)}',
@@ -198,6 +215,14 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                   message: 'No encontramos lugares con nombre en esta zona.',
                 )
               else ...[
+                if (_budgetRelaxed)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: AppDimensions.paddingM),
+                    child: Text(
+                      'Ningún lugar cabe en el presupuesto; mostramos los más económicos.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  ),
                 for (int i = 0; i < _recommendations.length; i++) ...[
                   _RecommendationCard(
                     meeting: _recommendations[i],
@@ -289,7 +314,7 @@ class _RecommendationsMessage extends StatelessWidget {
   }
 }
 
-/// Tarjeta de recomendación para un lugar a votar.
+/// Recommendation card for a place to vote.
 class _RecommendationCard extends StatelessWidget {
   final Meeting meeting;
   final bool selected;
@@ -357,7 +382,9 @@ class _RecommendationCard extends StatelessWidget {
                   ),
                   const SizedBox(height: AppDimensions.paddingXS),
                   Text(
-                    meeting.distanceLabel,
+                    meeting.estimatedCostPerPerson == null
+                        ? meeting.distanceLabel
+                        : '${meeting.distanceLabel} • ~\$${BudgetRecommendationService.formatCop(meeting.estimatedCostPerPerson!)} COP',
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary),
                   ),
@@ -379,7 +406,9 @@ class _RecommendationCard extends StatelessWidget {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    onPressed: () {},
+                    onPressed: () {
+                      // TODO: Open place details when the screen exists.
+                    },
                     icon: const Icon(
                       Icons.remove_red_eye_outlined,
                       color: AppColors.primaryBrown,
