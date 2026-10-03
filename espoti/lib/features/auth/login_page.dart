@@ -7,6 +7,10 @@ import '../../core/widgets/espoti_button.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../core/widgets/espoti_text_field.dart';
 
+import '../../core/services/auth_service.dart';
+
+import '../../core/services/user_service.dart';
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -17,9 +21,11 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _authService = AuthService();
 
   String? _emailError;
   String? _passwordError;
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -28,16 +34,48 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // Basic local validation only — there is no real authentication or
-  // backend call in this sprint
-  void _handleLogin() {
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final isValidDomain = AuthService.isValidEmailDomain(email);
+
     setState(() {
-      _emailError = _emailController.text.trim().isEmpty ? 'Email is required' : null;
+      if (email.isEmpty) {
+        _emailError = 'Email is required';
+      } else if (!isValidDomain) {
+        _emailError = 'Ingresa un correo con un dominio válido (ej. usuario@dominio.com)';
+      } else {
+        _emailError = null;
+      }
       _passwordError = _passwordController.text.isEmpty ? 'Password is required' : null;
     });
 
-    if (_emailError == null && _passwordError == null) {
-      Navigator.pushReplacementNamed(context, AppRoutes.home);
+    if (_emailError != null || _passwordError != null) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      await _authService.signInWithEmailAndPassword(
+        email: email,
+        password: _passwordController.text,
+      );
+      await UserService().init();
+
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, AppRoutes.home);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -72,6 +110,7 @@ class _LoginPageState extends State<LoginPage> {
               EspotiButton(
                 label: AppStrings.login,
                 variant: EspotiButtonVariant.secondary,
+                isLoading: _isLoading,
                 onPressed: _handleLogin,
               ),
               const SizedBox(height: AppDimensions.paddingL),

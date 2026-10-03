@@ -4,7 +4,12 @@ import 'theme.dart';
 import '../core/constants/app_strings.dart';
 
 class EspotiApp extends StatelessWidget {
-  const EspotiApp({super.key});
+  final String initialRoute;
+
+  const EspotiApp({
+    super.key,
+    this.initialRoute = AppRoutes.welcome,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -12,7 +17,7 @@ class EspotiApp extends StatelessWidget {
       title: AppStrings.appName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      initialRoute: AppRoutes.welcome,
+      initialRoute: initialRoute,
       routes: AppRoutes.routes,
     );
   }

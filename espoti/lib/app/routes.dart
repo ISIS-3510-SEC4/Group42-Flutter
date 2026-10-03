@@ -24,7 +24,6 @@ class AppRoutes {
   static const String voteMeeting = '/vote-meeting';
   static const String winningPlace = '/winning-place';
   static const String profile = '/profile';
-  static const String createMeeting = '/create_meeting';
   static const String friends = '/friends';
   static const String meetingDetail = '/meeting_detail';
 static const String createMeetingRecommendations = '/create-meeting-recommendations';
