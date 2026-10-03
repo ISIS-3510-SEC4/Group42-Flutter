@@ -8,6 +8,7 @@ import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../models/meeting.dart';
 import '../../core/widgets/attendee_avatars.dart';
+import 'nearby_recommendations_service.dart';
 
 /// "Create a meeting" (2) — shows the attendees and the
 /// recommendations of places to vote. Without backend, recommendations are mocked.
@@ -20,6 +21,56 @@ class VoteMeetingPage extends StatefulWidget {
 
 class _VoteMeetingPageState extends State<VoteMeetingPage> {
   int _selectedIndex = 0;
+  final _recommendationsService = NearbyRecommendationsService();
+  List<Meeting> _recommendations = const [];
+  LatLng? _location;
+  bool _isLoadingRecommendations = false;
+  String? _recommendationsError;
+  bool _didLoadRouteArguments = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didLoadRouteArguments) return;
+    _didLoadRouteArguments = true;
+
+    final routeArgs = ModalRoute.of(context)?.settings.arguments;
+    final args = routeArgs is Map ? routeArgs : const <dynamic, dynamic>{};
+    final location = args['location'];
+    if (location is LatLng) {
+      _location = location;
+      _loadRecommendations(location);
+    }
+  }
+
+  @override
+  void dispose() {
+    _recommendationsService.close();
+    super.dispose();
+  }
+
+  Future<void> _loadRecommendations(LatLng location) async {
+    setState(() {
+      _isLoadingRecommendations = true;
+      _recommendationsError = null;
+    });
+    try {
+      final recommendations =
+          await _recommendationsService.findNearbyPlaces(location);
+      if (!mounted) return;
+      setState(() {
+        _recommendations = recommendations;
+        _isLoadingRecommendations = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _recommendationsError =
+            'No se pudieron cargar lugares cercanos. Comprueba tu conexión e inténtalo de nuevo.';
+        _isLoadingRecommendations = false;
+      });
+    }
+  }
 
   void _handleNavTap(EspotiNavItem item) {
     switch (item) {
@@ -46,11 +97,12 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   @override
   Widget build(BuildContext context) {
     final routeArgs = ModalRoute.of(context)?.settings.arguments;
-    final args = routeArgs is Map ? Map<String, dynamic>.from(routeArgs) : <String, dynamic>{};
-    final activity = args['activity'] ?? '';
-    final day = args['day'] ?? '';
-    final time = args['time'] ?? '';
-    final location = args['location'] is LatLng ? args['location'] as LatLng : null;
+    final args = routeArgs is Map
+        ? Map<String, dynamic>.from(routeArgs)
+        : <String, dynamic>{};
+    final activity = args['activity'] as String? ?? '';
+    final day = args['day'] as String? ?? '';
+    final time = args['time'] as String? ?? '';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -94,12 +146,14 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                       if (day.isNotEmpty || time.isNotEmpty)
                         Text(
                           'When: ${day.isNotEmpty ? day : 'Not specified'} • ${time.isNotEmpty ? time : 'Not specified'}',
-                          style: const TextStyle(color: AppColors.textSecondary),
+                          style:
+                              const TextStyle(color: AppColors.textSecondary),
                         ),
-                      if (location != null)
+                      if (_location != null)
                         Text(
-                          'Location: ${location.latitude.toStringAsFixed(4)}, ${location.longitude.toStringAsFixed(4)}',
-                          style: const TextStyle(color: AppColors.textSecondary),
+                          'Punto elegido: ${_location!.latitude.toStringAsFixed(4)}, ${_location!.longitude.toStringAsFixed(4)}',
+                          style:
+                              const TextStyle(color: AppColors.textSecondary),
                         ),
                     ],
                   ),
@@ -110,14 +164,42 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
               const Text(AppStrings.ourRecommendations,
                   style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
-              for (int i = 0; i < MockMeetings.recommendations.length; i++) ...[
-                _RecommendationCard(
-                  meeting: MockMeetings.recommendations[i],
-                  selected: _selectedIndex == i,
-                  onTap: () => setState(() => _selectedIndex = i),
-                ),
-                const SizedBox(height: AppDimensions.paddingM),
+              if (_isLoadingRecommendations)
+                const Center(child: CircularProgressIndicator())
+              else if (_recommendationsError != null)
+                _RecommendationsMessage(
+                  message: _recommendationsError!,
+                  onRetry: _location == null
+                      ? null
+                      : () => _loadRecommendations(_location!),
+                )
+              else if (_location == null)
+                const _RecommendationsMessage(
+                  message:
+                      'Selecciona un punto en el mapa para buscar lugares cercanos.',
+                )
+              else if (_recommendations.isEmpty)
+                const _RecommendationsMessage(
+                  message: 'No encontramos lugares con nombre en esta zona.',
+                )
+              else ...[
+                for (int i = 0; i < _recommendations.length; i++) ...[
+                  _RecommendationCard(
+                    meeting: _recommendations[i],
+                    selected: _selectedIndex == i,
+                    onTap: () => setState(() => _selectedIndex = i),
+                  ),
+                  const SizedBox(height: AppDimensions.paddingM),
+                ],
               ],
+              const Padding(
+                padding: EdgeInsets.only(top: AppDimensions.paddingS),
+                child: Text(
+                  'Datos de lugares: © OpenStreetMap contributors',
+                  style:
+                      TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ),
               const SizedBox(height: AppDimensions.paddingM),
               Center(
                 child: SizedBox(
@@ -160,6 +242,37 @@ const _sectionTitleStyle = TextStyle(
   fontSize: 16,
   color: AppColors.text,
 );
+
+class _RecommendationsMessage extends StatelessWidget {
+  const _RecommendationsMessage({required this.message, this.onRetry});
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingL),
+        child: Column(
+          children: [
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            if (onRetry != null)
+              TextButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reintentar'),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Recommendation card for a place to vote.
 class _RecommendationCard extends StatelessWidget {

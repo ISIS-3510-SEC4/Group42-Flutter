@@ -119,8 +119,8 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
                     onPressed: () {
                       // TODO: open location picker when it exists (google_maps_flutter / flutter_map)
                     },
-                    icon:
-                        const Icon(Icons.search, color: AppColors.primaryBrown),
+                    icon: const Icon(Icons.search,
+                        color: Color.fromARGB(255, 143, 64, 11)),
                   ),
                 ],
               ),
@@ -130,7 +130,8 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
                   setState(() {
                     _selectedLocation = point;
                   });
-                  debugPrint('Ubicación de reunión guardada: ${point.latitude}, ${point.longitude}');
+                  debugPrint(
+                      'Ubicación de reunión guardada: ${point.latitude}, ${point.longitude}');
                 },
               ),
               const SizedBox(height: AppDimensions.paddingXL),
@@ -140,18 +141,20 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
                   label: AppStrings.schedule,
                   variant: EspotiButtonVariant.secondary,
                   width: 160,
-                  onPressed: () {
-                    Navigator.pushNamed(
-                      context,
-                      AppRoutes.voteMeeting,
-                      arguments: {
-                        'activity': _activityController.text,
-                        'day': _dayController.text,
-                        'time': _timeController.text,
-                        'location': _selectedLocation,
-                      },
-                    );
-                  },
+                  onPressed: _selectedLocation == null
+                      ? null
+                      : () {
+                          Navigator.pushNamed(
+                            context,
+                            AppRoutes.voteMeeting,
+                            arguments: {
+                              'activity': _activityController.text,
+                              'day': _dayController.text,
+                              'time': _timeController.text,
+                              'location': _selectedLocation,
+                            },
+                          );
+                        },
                 ),
               ),
               const SizedBox(height: AppDimensions.paddingXL),
@@ -214,6 +217,7 @@ class _LocationMapPreview extends StatefulWidget {
 
 class _LocationMapPreviewState extends State<_LocationMapPreview> {
   LatLng? _selectedPosition;
+  LatLng _mapCenter = const LatLng(4.6097, -74.0817);
   bool _isLoading = true;
   final MapController _mapController = MapController();
 
@@ -264,13 +268,9 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
       LatLng latLng = LatLng(position.latitude, position.longitude);
 
       setState(() {
-        _selectedPosition = latLng;
+        _mapCenter = latLng;
         _isLoading = false;
       });
-
-      if (widget.onLocationSelected != null) {
-        widget.onLocationSelected!(latLng);
-      }
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -294,19 +294,8 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
   Widget _buildMapContent() {
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: Color(0xFFFF6B00)),
-      );
-    }
-
-    if (_selectedPosition == null) {
-      return Center(
-        child: ElevatedButton.icon(
-          onPressed: () {
-            _getCurrentGPSLocation();
-          },
-          icon: const Icon(Icons.my_location),
-          label: const Text('Obtener ubicación actual'),
-        ),
+        child:
+            CircularProgressIndicator(color: Color.fromARGB(0, 202, 106, 50)),
       );
     }
 
@@ -315,7 +304,7 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
         FlutterMap(
           mapController: _mapController,
           options: MapOptions(
-            initialCenter: _selectedPosition!,
+            initialCenter: _mapCenter,
             initialZoom: 15.0,
             onTap: (tapPosition, point) {
               setState(() {
@@ -331,21 +320,34 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.example.espoti',
             ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: _selectedPosition!,
-                  width: 40,
-                  height: 40,
-                  child: const Icon(
-                    Icons.location_on,
-                    color: Color(0xFFFF6B00),
-                    size: 40,
+            if (_selectedPosition != null)
+              MarkerLayer(
+                markers: [
+                  Marker(
+                    point: _selectedPosition!,
+                    width: 40,
+                    height: 40,
+                    child: const Icon(
+                      Icons.location_on,
+                      color: Color.fromARGB(255, 121, 76, 44),
+                      size: 40,
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ],
+        ),
+        Positioned(
+          left: 6,
+          bottom: 6,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            color: Colors.white.withValues(alpha: 0.8),
+            child: const Text(
+              '© OpenStreetMap contributors',
+              style: TextStyle(fontSize: 9, color: Colors.black87),
+            ),
+          ),
         ),
         Positioned(
           bottom: 8,
@@ -355,8 +357,8 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
             foregroundColor: Colors.white,
             onPressed: () async {
               await _getCurrentGPSLocation();
-              if (_selectedPosition != null && mounted) {
-                _mapController.move(_selectedPosition!, 15.0);
+              if (mounted) {
+                _mapController.move(_mapCenter, 15.0);
               }
             },
             child: const Icon(Icons.my_location),
