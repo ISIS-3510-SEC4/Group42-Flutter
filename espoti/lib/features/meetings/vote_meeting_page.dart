@@ -10,6 +10,8 @@ import '../../models/meeting.dart';
 import '../../core/analytics/analytics_tracker.dart';
 import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
+import '../../core/services/analytics_service.dart';
+import 'budget_recommendation_service.dart';
 import 'nearby_recommendations_service.dart';
 import 'recommendation/meeting_schedule.dart';
 import 'recommendation/recommendation_strategy.dart';
@@ -18,6 +20,8 @@ import 'recommendation/weather_service.dart';
 
 enum _StrategyOption { closest, fair }
 
+/// "Create a meeting" (2) — shows the attendees and the
+/// recommendations of places to vote. Without backend, recommendations are mocked.
 class VoteMeetingPage extends StatefulWidget {
   const VoteMeetingPage({super.key});
 
@@ -42,13 +46,14 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   bool _isLoadingRecommendations = false;
   String? _recommendationsError;
   bool _didLoadRouteArguments = false;
-  late DateTime _horaEntrada;
+  int? _budget; // compatible max budget per person (COP), if any
+  bool _budgetRelaxed = false;
+  bool _advanced = false;
 
   @override
   void initState() {
     super.initState();
-    // REGISTRO DE TIEMPO: Hora exacta de entrada a la pantalla
-    _horaEntrada = DateTime.now();
+    AnalyticsService().stepViewed(MeetingPlanningStep.vote);
   }
 
   @override
@@ -64,6 +69,8 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     _meetingMoment = parseMeetingDateTime(day, time);
     if (_meetingMoment != null) _meetingWhenLabel = '$day $time'.trim();
     final location = args['location'];
+    final budget = args['budget'];
+    if (budget is int) _budget = budget;
     if (location is LatLng) {
       _location = location;
       _loadRecommendations(location);
@@ -72,6 +79,9 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
 
   @override
   void dispose() {
+    if (!_advanced) {
+      AnalyticsService().stepAbandoned(MeetingPlanningStep.vote);
+    }
     _recommendationsService.close();
     _weatherService.close();
     super.dispose();
@@ -108,7 +118,13 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       }
       final forecast = await forecastFuture;
       if (!mounted) return;
+      // Budget-based affordability filter on top of the nearby results.
+      final result =
+          BudgetRecommendationService.apply(recommendations, _budget);
       setState(() {
+        _recommendations = result.places;
+        _budgetRelaxed = result.relaxed;
+        _selectedIndex = 0;
         _forecast = forecast;
         _participants = participants;
         _candidates = candidates;
@@ -179,11 +195,16 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       case EspotiNavItem.createMeeting:
         break;
       case EspotiNavItem.friends:
-        break;
+        break; // TODO: Friends Screen, when it exists
     }
   }
 
   void _handleVote() {
+    _advanced = true;
+    AnalyticsService()
+      ..stepCompleted(MeetingPlanningStep.vote)
+      ..stepViewed(MeetingPlanningStep.result)
+      ..planningCompleted();
     // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
     final horaSalida = DateTime.now();
     final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
@@ -256,6 +277,12 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                       if (day.isNotEmpty || time.isNotEmpty)
                         Text(
                           'When: ${day.isNotEmpty ? day : 'Not specified'} • ${time.isNotEmpty ? time : 'Not specified'}',
+                          style:
+                              const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      if (_budget != null)
+                        Text(
+                          'Presupuesto compatible: hasta \$${BudgetRecommendationService.formatCop(_budget!)} COP por persona',
                           style:
                               const TextStyle(color: AppColors.textSecondary),
                         ),
@@ -335,6 +362,14 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                   message: 'No encontramos lugares con nombre en esta zona.',
                 )
               else ...[
+                if (_budgetRelaxed)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: AppDimensions.paddingM),
+                    child: Text(
+                      'Ningún lugar cabe en el presupuesto; mostramos los más económicos.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                  ),
                 for (int i = 0; i < _recommendations.length; i++) ...[
                   _RecommendationCard(
                     meeting: _recommendations[i],
@@ -471,7 +506,7 @@ class _RecommendationsMessage extends StatelessWidget {
   }
 }
 
-/// Tarjeta de recomendación para un lugar a votar.
+/// Recommendation card for a place to vote.
 class _RecommendationCard extends StatelessWidget {
   final Meeting meeting;
   final bool selected;
@@ -539,7 +574,9 @@ class _RecommendationCard extends StatelessWidget {
                   ),
                   const SizedBox(height: AppDimensions.paddingXS),
                   Text(
-                    meeting.distanceLabel,
+                    meeting.estimatedCostPerPerson == null
+                        ? meeting.distanceLabel
+                        : '${meeting.distanceLabel} • ~\$${BudgetRecommendationService.formatCop(meeting.estimatedCostPerPerson!)} COP',
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary),
                   ),

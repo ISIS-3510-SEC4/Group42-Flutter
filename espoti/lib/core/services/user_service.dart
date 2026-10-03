@@ -15,8 +15,8 @@ class UserService {
 
   AppUser get currentUser => userNotifier.value;
 
-  /// Inicializa el servicio leyendo el perfil guardado en SharedPreferences
-  /// o construyéndolo a partir del usuario actual autenticado en Firebase.
+  /// Initializes the service by reading any persisted profile from SharedPreferences
+  /// or building one from the currently authenticated Firebase user.
   Future<void> init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -28,7 +28,7 @@ class UserService {
         return;
       }
 
-      // Si no existe caché local, verificar el usuario actual en Firebase Auth
+      // If no local cache exists, check Firebase Auth current user
       final firebaseUser = FirebaseAuth.instance.currentUser;
       if (firebaseUser != null) {
         final displayName = firebaseUser.displayName ?? '';
@@ -50,11 +50,11 @@ class UserService {
         );
       }
     } catch (e) {
-      debugPrint('Error al inicializar UserService: $e');
+      debugPrint('Error initializing UserService: $e');
     }
   }
 
-  /// Actualiza y guarda de manera persistente el perfil del usuario actual.
+  /// Updates and persists the current user profile.
   Future<void> saveUser(AppUser user) async {
     userNotifier.value = user;
 
@@ -62,7 +62,7 @@ class UserService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_storageKey, jsonEncode(user.toJson()));
 
-      // Sincronizar nombre para mostrar y foto con Firebase Auth si están disponibles
+      // Sync display name and photo with Firebase Auth if available
       final firebaseUser = FirebaseAuth.instance.currentUser;
       if (firebaseUser != null) {
         if (user.name.isNotEmpty && firebaseUser.displayName != user.name) {
@@ -73,17 +73,17 @@ class UserService {
         }
       }
     } catch (e) {
-      debugPrint('Error al guardar perfil de usuario: $e');
+      debugPrint('Error saving user profile: $e');
     }
   }
 
-  /// Restablece el perfil al cerrar sesión.
+  /// Resets profile on logout.
   Future<void> clearUser() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_storageKey);
     } catch (e) {
-      debugPrint('Error al limpiar perfil de usuario: $e');
+      debugPrint('Error clearing user profile: $e');
     }
     userNotifier.value = mockUser;
   }

@@ -3,28 +3,15 @@ import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
-import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../models/meeting.dart';
 
-class WinningPlacePage extends StatefulWidget {
+/// "Create a meeting" screen (3) — displays the winning place
+/// from the vote and its reviews.
+class WinningPlacePage extends StatelessWidget {
   const WinningPlacePage({super.key});
-
-  @override
-  State<WinningPlacePage> createState() => _WinningPlacePageState();
-}
-
-class _WinningPlacePageState extends State<WinningPlacePage> {
-  late DateTime _horaEntrada;
-
-  @override
-  void initState() {
-    super.initState();
-    // REGISTRO DE TIEMPO: Hora exacta de entrada a la pantalla
-    _horaEntrada = DateTime.now();
-  }
 
   void _handleNavTap(BuildContext context, EspotiNavItem item) {
     switch (item) {
@@ -40,7 +27,7 @@ class _WinningPlacePageState extends State<WinningPlacePage> {
       case EspotiNavItem.createMeeting:
         break;
       case EspotiNavItem.friends:
-        break;
+        break; // TODO: Friends screen does not exist yet.
     }
   }
 
@@ -74,6 +61,7 @@ class _WinningPlacePageState extends State<WinningPlacePage> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   AttendeeAvatars(),
+                  // TODO: Replace with the actual date/time from the form.
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -90,7 +78,7 @@ class _WinningPlacePageState extends State<WinningPlacePage> {
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.winningPlace, style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
-              const _PlaceCard(meeting: winner),
+              _PlaceCard(meeting: winner),
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.winningPlaceReviews,
                   style: _sectionTitleStyle),
@@ -105,17 +93,7 @@ class _WinningPlacePageState extends State<WinningPlacePage> {
                   width: 160,
                   height: AppDimensions.buttonHeight,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
-                      final horaSalida = DateTime.now();
-                      final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
-                      AnalyticsService().logStepTime(
-                        stepName: 'creacion_reunion_paso_3_resultado',
-                        durationSeconds: diferenciaSegundos,
-                      );
-
-                      Navigator.pop(context);
-                    },
+                    onPressed: () => Navigator.pop(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryBrown,
                       foregroundColor: AppColors.white,
@@ -152,7 +130,7 @@ const _sectionTitleStyle = TextStyle(
   color: AppColors.text,
 );
 
-/// Tarjeta simple para el lugar ganador.
+/// Simple (non-interactive) card for the winning place.
 class _PlaceCard extends StatelessWidget {
   final Meeting meeting;
 
@@ -220,7 +198,7 @@ class _PlaceCard extends StatelessWidget {
   }
 }
 
-/// Tarjeta para una reseña del lugar ganador.
+/// Card for a review of the winning place.
 class _ReviewCard extends StatelessWidget {
   final MeetingReview review;
 
@@ -290,7 +268,9 @@ class _ReviewCard extends StatelessWidget {
             child: IconButton(
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              onPressed: () {},
+              onPressed: () {
+                // TODO: Open the review details when that screen exists.
+              },
               icon: const Icon(Icons.remove_red_eye_outlined,
                   color: AppColors.primaryBrown, size: 18),
             ),
