@@ -11,6 +11,10 @@ import '../../core/analytics/analytics_tracker.dart';
 import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
 import 'nearby_recommendations_service.dart';
+import 'recommendation/recommendation_strategy.dart';
+import 'recommendation/simulated_data.dart';
+
+enum _StrategyOption { closest, fair }
 
 class VoteMeetingPage extends StatefulWidget {
   const VoteMeetingPage({super.key});
@@ -24,6 +28,10 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   final _recommendationsService = NearbyRecommendationsService();
   final _reviewTracker = RecommendationReviewTracker();
   List<Meeting> _recommendations = const [];
+  List<Participant> _participants = const [];
+  List<PlaceCandidate> _candidates = const [];
+  _StrategyOption _strategyOption = _StrategyOption.fair;
+  bool _usingSamplePlaces = false;
   LatLng? _location;
   bool _isLoadingRecommendations = false;
   String? _recommendationsError;
@@ -64,15 +72,26 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       _recommendationsError = null;
     });
     try {
-      final recommendations =
-          await _recommendationsService.findNearbyPlaces(location);
+      final participants = await loadParticipants(location);
+      var candidates = const <PlaceCandidate>[];
+      var usingSamplePlaces = false;
+      try {
+        candidates = await _recommendationsService.findCandidates(
+          location,
+          radiusMeters: 2500,
+        );
+      } catch (_) {
+        candidates = samplePlacesAround(location);
+        usingSamplePlaces = true;
+      }
       if (!mounted) return;
       setState(() {
-        _recommendations = recommendations;
-        _selectedIndex = 0;
+        _participants = participants;
+        _candidates = candidates;
+        _usingSamplePlaces = usingSamplePlaces;
         _isLoadingRecommendations = false;
       });
-      _reviewTracker.displayed(resultCount: recommendations.length);
+      _applyStrategy();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -81,6 +100,38 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
         _isLoadingRecommendations = false;
       });
     }
+  }
+
+  RecommendationStrategy get _strategy => switch (_strategyOption) {
+        _StrategyOption.closest =>
+          ClosestToPointStrategy(reference: _location!),
+        _StrategyOption.fair => const FairTravelStrategy(),
+      };
+
+  /// Ranks the candidates with the selected strategy and shows the top 10.
+  void _applyStrategy() {
+    final ranked = _strategy.rank(_candidates, _participants).take(10);
+    final recommendations = [
+      for (final place in ranked)
+        Meeting(
+          placeName: place.place.name,
+          timeLabel: place.place.category,
+          distanceLabel: place.explanation,
+          rating: null,
+          imageUrl: '',
+        ),
+    ];
+    setState(() {
+      _recommendations = recommendations;
+      _selectedIndex = 0;
+    });
+    _reviewTracker.displayed(resultCount: recommendations.length);
+  }
+
+  void _selectStrategy(_StrategyOption option) {
+    if (option == _strategyOption || _location == null) return;
+    setState(() => _strategyOption = option);
+    _applyStrategy();
   }
 
   void _handleNavTap(EspotiNavItem item) {
@@ -188,10 +239,51 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                 ),
               const SizedBox(height: AppDimensions.paddingM),
               const AttendeeAvatars(),
+              if (_participants.isNotEmpty) ...[
+                const SizedBox(height: AppDimensions.paddingS),
+                Text(
+                  'Participantes: ${_participants.map((p) => p.name).join(', ')} (Ana y Luis son simulados)',
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ],
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.ourRecommendations,
                   style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
+              if (_location != null) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<_StrategyOption>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(
+                        value: _StrategyOption.closest,
+                        label: Text('Más cerca'),
+                      ),
+                      ButtonSegment(
+                        value: _StrategyOption.fair,
+                        label: Text('Más justo'),
+                      ),
+                    ],
+                    selected: {_strategyOption},
+                    onSelectionChanged: (selection) =>
+                        _selectStrategy(selection.first),
+                  ),
+                ),
+                const SizedBox(height: AppDimensions.paddingS),
+                Text(
+                  _strategy.description,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
+                ),
+                if (_usingSamplePlaces)
+                  const Text(
+                    'No se pudo consultar el servicio de lugares: se muestran lugares de ejemplo.',
+                    style: TextStyle(fontSize: 12, color: AppColors.orange),
+                  ),
+                const SizedBox(height: AppDimensions.paddingM),
+              ],
               if (_isLoadingRecommendations)
                 const Center(child: CircularProgressIndicator())
               else if (_recommendationsError != null)
