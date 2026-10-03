@@ -42,7 +42,7 @@ class _LoginPageState extends State<LoginPage> {
       if (email.isEmpty) {
         _emailError = 'Email is required';
       } else if (!isValidDomain) {
-        _emailError = 'Ingresa un correo con un dominio válido (ej. usuario@dominio.com)';
+        _emailError = 'Enter an email address with a valid domain (ej. usuario@gmail.com)';
       } else {
         _emailError = null;
       }

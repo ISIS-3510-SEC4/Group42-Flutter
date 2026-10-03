@@ -7,16 +7,12 @@ class AuthService {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// Stream to listen to real-time authentication state changes.
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  /// Currently logged in user, or null if unauthenticated.
   User? get currentUser => _auth.currentUser;
 
-  /// Whether a user is currently logged in.
   bool get isAuthenticated => _auth.currentUser != null;
 
-  /// Sign in with email and password.
   Future<UserCredential> signInWithEmailAndPassword({
     required String email,
     required String password,
@@ -32,11 +28,15 @@ class AuthService {
     }
   }
 
-  /// Register a new account with email and password.
   Future<UserCredential> registerWithEmailAndPassword({
     required String email,
     required String password,
   }) async {
+    final passwordError = validatePassword(password);
+    if (passwordError != null) {
+      throw passwordError;
+    }
+
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -48,12 +48,10 @@ class AuthService {
     }
   }
 
-  /// Sign out the current user and clear local cached profile.
   Future<void> signOut() async {
     await _auth.signOut();
   }
 
-  /// Validates that an email has a proper syntax and a valid domain with a TLD.
   static bool isValidEmailDomain(String email) {
     final trimmed = email.trim();
     final regex = RegExp(
@@ -69,7 +67,25 @@ class AuthService {
     return true;
   }
 
-  /// Translates common Firebase auth error codes into friendly Spanish messages.
+  static String? validatePassword(String password) {
+    if (password.isEmpty) {
+      return 'La contraseña es obligatoria';
+    }
+    if (password.length < 8) {
+      return 'La contraseña debe tener mínimo 8 caracteres';
+    }
+    if (!password.contains(RegExp(r'[A-Z]'))) {
+      return 'La contraseña debe tener mínimo una letra mayúscula';
+    }
+    if (!password.contains(RegExp(r'[a-z]'))) {
+      return 'La contraseña debe tener mínimo una letra minúscula';
+    }
+    if (!RegExp(r'^[a-zA-Z0-9.]+$').hasMatch(password)) {
+      return 'La contraseña no puede tener caracteres especiales ni emojis, solo punto (.)';
+    }
+    return null;
+  }
+
   static String getReadableAuthError(FirebaseAuthException exception) {
     switch (exception.code) {
       case 'user-not-found':
@@ -82,7 +98,7 @@ class AuthService {
       case 'invalid-email':
         return 'El formato del correo electrónico no es válido.';
       case 'weak-password':
-        return 'La contraseña es muy débil. Debe tener al menos 6 caracteres.';
+        return 'La contraseña debe tener mínimo 8 caracteres, mayúscula, minúscula y solo punto (.)';
       case 'user-disabled':
         return 'Esta cuenta ha sido inhabilitada.';
       case 'network-request-failed':

@@ -7,11 +7,10 @@ import '../../core/constants/app_strings.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../models/meeting.dart';
+import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
 import 'nearby_recommendations_service.dart';
 
-/// "Create a meeting" (2) — shows the attendees and the
-/// recommendations of places to vote. Without backend, recommendations are mocked.
 class VoteMeetingPage extends StatefulWidget {
   const VoteMeetingPage({super.key});
 
@@ -27,6 +26,14 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   bool _isLoadingRecommendations = false;
   String? _recommendationsError;
   bool _didLoadRouteArguments = false;
+  late DateTime _horaEntrada;
+
+  @override
+  void initState() {
+    super.initState();
+    // REGISTRO DE TIEMPO: Hora exacta de entrada a la pantalla
+    _horaEntrada = DateTime.now();
+  }
 
   @override
   void didChangeDependencies() {
@@ -86,11 +93,19 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       case EspotiNavItem.createMeeting:
         break;
       case EspotiNavItem.friends:
-        break; // TODO: Friends Screen, when it exists
+        break;
     }
   }
 
   void _handleVote() {
+    // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
+    final horaSalida = DateTime.now();
+    final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
+    AnalyticsService().logStepTime(
+      stepName: 'creacion_reunion_paso_2_votacion',
+      durationSeconds: diferenciaSegundos,
+    );
+
     Navigator.pushNamed(context, AppRoutes.winningPlace);
   }
 
@@ -274,7 +289,7 @@ class _RecommendationsMessage extends StatelessWidget {
   }
 }
 
-/// Recommendation card for a place to vote.
+/// Tarjeta de recomendación para un lugar a votar.
 class _RecommendationCard extends StatelessWidget {
   final Meeting meeting;
   final bool selected;
@@ -364,9 +379,7 @@ class _RecommendationCard extends StatelessWidget {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    onPressed: () {
-                      // TODO: Open place details when the screen exists.
-                    },
+                    onPressed: () {},
                     icon: const Icon(
                       Icons.remove_red_eye_outlined,
                       color: AppColors.primaryBrown,

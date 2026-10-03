@@ -26,13 +26,41 @@ void main() {
     test('translates weak-password properly', () {
       final exception = FirebaseAuthException(code: 'weak-password');
       final message = AuthService.getReadableAuthError(exception);
-      expect(message, 'La contraseña es muy débil. Debe tener al menos 6 caracteres.');
+      expect(message, 'La contraseña debe tener mínimo 8 caracteres, mayúscula, minúscula y solo punto (.)');
     });
 
     test('falls back to custom message or default on unknown code', () {
       final exception = FirebaseAuthException(code: 'unknown-code', message: 'Custom message');
       final message = AuthService.getReadableAuthError(exception);
       expect(message, 'Custom message');
+    });
+  });
+
+  group('AuthService.validatePassword', () {
+    test('rechaza contraseñas con menos de 8 caracteres', () {
+      expect(AuthService.validatePassword('Pass1.'), 'La contraseña debe tener mínimo 8 caracteres');
+    });
+
+    test('rechaza contraseñas sin mayúscula', () {
+      expect(AuthService.validatePassword('password123.'), 'La contraseña debe tener mínimo una letra mayúscula');
+    });
+
+    test('rechaza contraseñas sin minúscula', () {
+      expect(AuthService.validatePassword('PASSWORD123.'), 'La contraseña debe tener mínimo una letra minúscula');
+    });
+
+    test('rechaza caracteres especiales prohibidos como punto y coma, asterisco, numeral y emojis', () {
+      expect(AuthService.validatePassword('Password;123'), isNotNull);
+      expect(AuthService.validatePassword('Password*123'), isNotNull);
+      expect(AuthService.validatePassword('Password#123'), isNotNull);
+      expect(AuthService.validatePassword('Password😄123'), isNotNull);
+      expect(AuthService.validatePassword('Password 123'), isNotNull);
+    });
+
+    test('acepta contraseñas válidas con mayúscula, minúscula, números y punto opcional', () {
+      expect(AuthService.validatePassword('MiPassword123.'), isNull);
+      expect(AuthService.validatePassword('SuperClave2026'), isNull);
+      expect(AuthService.validatePassword('ClaveConPunto.'), isNull);
     });
   });
 
