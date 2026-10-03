@@ -3,12 +3,14 @@ import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/services/user_service.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_button.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../core/widgets/meeting_card.dart';
 import '../../core/widgets/section_title.dart';
 import '../../models/meeting.dart';
+import '../../models/user.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -53,8 +55,17 @@ class HomePage extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: AppDimensions.paddingM),
-              Text(AppStrings.greeting,
-                  style: Theme.of(context).textTheme.headlineMedium),
+              ValueListenableBuilder<AppUser>(
+                valueListenable: UserService().userNotifier,
+                builder: (context, user, _) {
+                  final displayName =
+                      user.firstName.isNotEmpty ? user.firstName : user.name;
+                  return Text(
+                    'Hello, $displayName',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  );
+                },
+              ),
               const Text(
                 AppStrings.tagline,
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 15),

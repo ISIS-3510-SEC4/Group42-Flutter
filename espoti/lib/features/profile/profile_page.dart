@@ -3,6 +3,8 @@ import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/user_service.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../models/user.dart';
@@ -25,131 +27,137 @@ class ProfilePage extends StatelessWidget {
         break; 
       case EspotiNavItem.friends:
         Navigator.pushReplacementNamed(context, AppRoutes.friends);
-      case EspotiNavItem.friends:
         break;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    const user = mockUser;
+    return ValueListenableBuilder<AppUser>(
+      valueListenable: UserService().userNotifier,
+      builder: (context, user, _) {
+        final displayName =
+            user.firstName.isNotEmpty ? user.firstName : user.name;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding:
-              const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: AppDimensions.paddingM),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  EspotiLogo(height: AppDimensions.logoSizeSmall),
-                  Icon(Icons.menu, color: AppColors.primaryBrown),
-                ],
-              ),
-              const SizedBox(height: AppDimensions.paddingM),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(AppStrings.helloJulian,
-                      style: Theme.of(context).textTheme.headlineMedium),
-                  OutlinedButton(
-                    onPressed: () {
-                      Navigator.pushNamed(context, AppRoutes.editProfile);
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primaryBrown,
-                      side: const BorderSide(color: AppColors.primaryBrown),
-                      shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppDimensions.radiusPill),
-                      ),
-                    ),
-                    child: const Text(AppStrings.editProfile,
-                        style: TextStyle(fontSize: 12)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: AppDimensions.paddingL),
-              Row(
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: SafeArea(
+            child: SingleChildScrollView(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundColor: AppColors.mauve30,
-                    child: ClipOval(
-                      child: Image.network(
-                        user.avatarUrl,
-                        width: 72,
-                        height: 72,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
-                          Icons.person,
-                          size: 36,
-                          color: AppColors.primaryBrown,
+                  const SizedBox(height: AppDimensions.paddingM),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      EspotiLogo(height: AppDimensions.logoSizeSmall),
+                      Icon(Icons.menu, color: AppColors.primaryBrown),
+                    ],
+                  ),
+                  const SizedBox(height: AppDimensions.paddingM),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Hello $displayName',
+                          style: Theme.of(context).textTheme.headlineMedium),
+                      OutlinedButton(
+                        onPressed: () {
+                          Navigator.pushNamed(context, AppRoutes.editProfile);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primaryBrown,
+                          side: const BorderSide(color: AppColors.primaryBrown),
+                          shape: RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(AppDimensions.radiusPill),
+                          ),
+                        ),
+                        child: const Text(AppStrings.editProfile,
+                            style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppDimensions.paddingL),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 36,
+                        backgroundColor: AppColors.mauve30,
+                        child: ClipOval(
+                          child: Image.network(
+                            user.avatarUrl,
+                            width: 72,
+                            height: 72,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                const Icon(
+                              Icons.person,
+                              size: 36,
+                              color: AppColors.primaryBrown,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: AppDimensions.paddingM),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          AppStrings.yourCode,
-                          style: TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary),
-                        ),
-                        Row(
+                      const SizedBox(width: AppDimensions.paddingM),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              user.code,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.text,
-                              ),
+                            const Text(
+                              AppStrings.yourCode,
+                              style: TextStyle(
+                                  fontSize: 12, color: AppColors.textSecondary),
                             ),
-                            const SizedBox(width: 6),
-                            const Icon(Icons.ios_share,
-                                size: 14, color: AppColors.orange),
+                            Row(
+                              children: [
+                                Text(
+                                  user.code,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.text,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                const Icon(Icons.ios_share,
+                                    size: 14, color: AppColors.orange),
+                              ],
+                            ),
+                            Text(
+                              user.location,
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.textSecondary),
+                            ),
                           ],
                         ),
-                        Text(
-                          user.location,
-                          style: const TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: AppDimensions.paddingL),
+                  _InfoRow(
+                      label: AppStrings.preferences,
+                      value: user.preferences.join(', ')),
+                  const SizedBox(height: AppDimensions.paddingS),
+                  _InfoRow(
+                      label: AppStrings.maxRadius,
+                      value: '${user.maxRadiusKm} km'),
+                  const SizedBox(height: AppDimensions.paddingL),
+                  const _InviteCoffeeCard(),
+                  const SizedBox(height: AppDimensions.paddingL),
+                  const _SettingsList(),
+                  const SizedBox(height: AppDimensions.paddingL),
                 ],
               ),
-              const SizedBox(height: AppDimensions.paddingL),
-              _InfoRow(
-                  label: AppStrings.preferences,
-                  value: user.preferences.join(', ')),
-              const SizedBox(height: AppDimensions.paddingS),
-              _InfoRow(
-                  label: AppStrings.maxRadius, value: '${user.maxRadiusKm} km'),
-              const SizedBox(height: AppDimensions.paddingL),
-              const _InviteCoffeeCard(),
-              const SizedBox(height: AppDimensions.paddingL),
-              const _SettingsList(),
-              const SizedBox(height: AppDimensions.paddingL),
-            ],
+            ),
           ),
-        ),
-      ),
-      bottomNavigationBar: EspotiBottomNavigation(
-        currentItem: EspotiNavItem.profile,
-        onItemSelected: (item) => _handleNavTap(context, item),
-      ),
+          bottomNavigationBar: EspotiBottomNavigation(
+            currentItem: EspotiNavItem.profile,
+            onItemSelected: (item) => _handleNavTap(context, item),
+          ),
+        );
+      },
     );
   }
 }
@@ -250,7 +258,18 @@ class _SettingsList extends StatelessWidget {
       children: _items
           .map(
             (item) => ListTile(
-              onTap: null,
+              onTap: item.$1 == AppStrings.logOut
+                  ? () async {
+                      await AuthService().signOut();
+                      if (context.mounted) {
+                        Navigator.pushNamedAndRemoveUntil(
+                          context,
+                          AppRoutes.welcome,
+                          (route) => false,
+                        );
+                      }
+                    }
+                  : null,
               contentPadding: EdgeInsets.zero,
               leading: Icon(item.$2, color: AppColors.primaryBrown),
               title:

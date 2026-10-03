@@ -11,6 +11,7 @@ class EspotiButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final EspotiButtonVariant variant;
   final double? width;
+  final bool isLoading;
 
   const EspotiButton({
     super.key,
@@ -18,6 +19,7 @@ class EspotiButton extends StatelessWidget {
     required this.onPressed,
     this.variant = EspotiButtonVariant.primary,
     this.width,
+    this.isLoading = false,
   });
 
   @override
@@ -30,22 +32,32 @@ class EspotiButton extends StatelessWidget {
       width: width ?? double.infinity,
       height: AppDimensions.buttonHeight,
       child: ElevatedButton(
-        onPressed: onPressed,
+        onPressed: isLoading ? null : onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: backgroundColor,
           foregroundColor: AppColors.white,
+          disabledBackgroundColor: backgroundColor.withValues(alpha: 0.6),
           elevation: 0,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
           ),
         ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  color: AppColors.white,
+                  strokeWidth: 2.5,
+                ),
+              )
+            : Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
       ),
     );
   }
