@@ -48,6 +48,35 @@ void main() {
     expect(const FairTravelStrategy().rank([nearA], const []), isEmpty);
   });
 
+  test('rain pushes outdoor places down without discarding them', () {
+    const park = PlaceCandidate(
+      name: 'Park',
+      category: outdoorCategory,
+      location: LatLng(0.005, 0),
+    );
+    const closest = ClosestToPointStrategy(reference: LatLng(0, 0));
+
+    final dry = closest.rank([park, nearA, middle], [west, east]);
+    final rainy = const RainAwareStrategy(inner: closest, rainProbability: 80)
+        .rank([park, nearA, middle], [west, east]);
+
+    // Dry: the park is the closest. Rainy: it drops behind the indoor place
+    // that was farther, but still beats the one that is much farther.
+    expect(dry.first.place.name, 'Park');
+    expect(rainy.map((r) => r.place.name), ['Near A', 'Park', 'Middle']);
+    expect(rainy[1].explanation, contains('lluvia probable'));
+    expect(rainy.first.explanation, isNot(contains('lluvia')));
+  });
+
+  test('rain decorator keeps the label of the wrapped strategy', () {
+    const strategy = RainAwareStrategy(
+      inner: FairTravelStrategy(),
+      rainProbability: 60,
+    );
+
+    expect(strategy.label, const FairTravelStrategy().label);
+  });
+
   test('formats short and long distances', () {
     expect(formatDistance(40.4), '40 m');
     expect(formatDistance(2500), '2.50 km');
