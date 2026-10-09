@@ -41,7 +41,7 @@ class PreferenceSelector extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Preferencias:',
+          'Preferences:',
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,

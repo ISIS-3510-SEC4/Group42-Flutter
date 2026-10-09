@@ -9,13 +9,16 @@ import 'core/services/user_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
-  );
+  ); // Iniciar Firebase
+  
   await UserService().init();
 
   final initialRoute =
       AuthService().isAuthenticated ? AppRoutes.home : AppRoutes.welcome;
+      // Determinar la ruta inicial según el estado de autenticación
 
   runApp(EspotiApp(initialRoute: initialRoute));
 }

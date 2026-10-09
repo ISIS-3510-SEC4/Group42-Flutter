@@ -44,9 +44,10 @@ class UserService {
           location: 'Bogotá D.C.',
           preferences: const ['Walk', 'Eat'],
           maxRadiusKm: 10,
-          avatarUrl: firebaseUser.photoURL ?? 'https://i.pravatar.cc/200?img=13',
+          avatarUrl: firebaseUser.photoURL ?? 'https://images.pexels.com/photos/39987037/pexels-photo-39987037.jpeg',
           email: firebaseUser.email ?? '',
           description: '',
+          phone: firebaseUser.phoneNumber ?? '',
         );
       }
     } catch (e) {

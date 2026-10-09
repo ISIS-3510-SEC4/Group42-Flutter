@@ -14,7 +14,7 @@ class WelcomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return Scaffold(//Widget con la estructura básica
       backgroundColor: AppColors.primaryBrown,
       body: SafeArea(
         child: Padding(
@@ -26,7 +26,7 @@ class WelcomePage extends StatelessWidget {
               const Spacer(flex: 2),
 
               Image.asset(
-                AppAssets.espotiImage,
+                AppAssets.espotiImage, //Logo
                 height: 180,
                 fit: BoxFit.contain,
               ),

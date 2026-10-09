@@ -6,9 +6,7 @@ import '../../core/constants/app_strings.dart';
 import '../../core/widgets/espoti_button.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../core/widgets/espoti_text_field.dart';
-
 import '../../core/services/auth_service.dart';
-
 import '../../core/services/user_service.dart';
 
 class LoginPage extends StatefulWidget {
@@ -19,6 +17,7 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _authService = AuthService();
@@ -42,7 +41,7 @@ class _LoginPageState extends State<LoginPage> {
       if (email.isEmpty) {
         _emailError = 'Email is required';
       } else if (!isValidDomain) {
-        _emailError = 'Ingresa un correo con un dominio válido (ej. usuario@dominio.com)';
+        _emailError = 'Enter an email address with a valid domain (e.g., user@domain.com)';
       } else {
         _emailError = null;
       }
@@ -60,7 +59,7 @@ class _LoginPageState extends State<LoginPage> {
       );
       await UserService().init();
 
-      if (mounted) {
+      if (mounted) {// Mounted confirma que el widget esta activo
         Navigator.pushReplacementNamed(context, AppRoutes.home);
       }
     } catch (e) {
@@ -116,6 +115,7 @@ class _LoginPageState extends State<LoginPage> {
             vertical: AppDimensions.paddingL,
           ),
           child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Center(child: EspotiLogo(height: AppDimensions.logoSizeMedium)),
@@ -163,7 +163,7 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
               const SizedBox(height: AppDimensions.paddingS),
-              // "Forgot Password?" intentionally does not navigate anywhere
+              // "Forgot Password?" Aun no esta implementado
               Center(
                 child: TextButton(
                   onPressed: null,
@@ -191,13 +191,17 @@ class _SocialIconsRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
+        const Text(
+          'Or sign in with: ',
+          style: TextStyle(color: AppColors.text, fontSize: 13),
+        ),
         _SocialIcon(
           icon: Icons.g_mobiledata,
           color: AppColors.orange,
           onTap: onGoogleTap,
         ),
         const SizedBox(width: AppDimensions.paddingL),
-        const _SocialIcon(icon: Icons.facebook, color: AppColors.primaryBrown),
+        //const _SocialIcon(icon: Icons.facebook, color: AppColors.primaryBrown),
       ],
     );
   }
@@ -212,7 +216,7 @@ class _SocialIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Decorative unless [onTap] is provided (Google login).
+
     return GestureDetector(
       onTap: onTap,
       child: CircleAvatar(

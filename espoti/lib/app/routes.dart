@@ -15,21 +15,24 @@ import '../features/profile/edit_profile_page.dart';
 class AppRoutes {
   AppRoutes._();
 
-  static const String welcome = '/';
+  static const String welcome = '/welcome';
   static const String login = '/login';
   static const String register = '/register';
+
   static const String home = '/home';
+  static const String profile = '/profile';
   static const String meetings = '/meetings';
+  static const String meetingDetail = '/meeting_detail';
+
   static const String createMeeting = '/create-meeting';
   static const String voteMeeting = '/vote-meeting';
   static const String winningPlace = '/winning-place';
-  static const String profile = '/profile';
+
   static const String friends = '/friends';
-  static const String meetingDetail = '/meeting_detail';
-static const String createMeetingRecommendations = '/create-meeting-recommendations';
+  static const String createMeetingRecommendations = '/create-meeting-recommendations';
   static const String editProfile = '/edit-profile';
 
-  /// Single source of truth mapping route names to their pages.
+  /// Asociar nombres de rutas con sus respectivas páginas
   static Map<String, WidgetBuilder> get routes => {
         welcome: (context) => const WelcomePage(),
         login: (context) => const LoginPage(),
