@@ -26,7 +26,7 @@ class AppRoutes {
   static const String profile = '/profile';
   static const String friends = '/friends';
   static const String meetingDetail = '/meeting_detail';
-static const String createMeetingRecommendations = '/create-meeting-recommendations';
+  static const String createMeetingRecommendations = '/create-meeting-recommendations';
   static const String editProfile = '/edit-profile';
 
   /// Single source of truth mapping route names to their pages.
