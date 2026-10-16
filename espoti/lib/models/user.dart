@@ -2,6 +2,7 @@
 class AppUser {
   final String firstName;
   final String lastName;
+  final String phone;
   final String name;
   final String code;
   final String location;
@@ -14,6 +15,7 @@ class AppUser {
   const AppUser({
     this.firstName = '',
     this.lastName = '',
+    this.phone = '',
     required this.name,
     required this.code,
     required this.location,
@@ -34,6 +36,7 @@ class AppUser {
     List<String>? preferences,
     int? maxRadiusKm,
     String? avatarUrl,
+    String? phone,
     String? email,
     String? description,
   }) {
@@ -56,6 +59,7 @@ class AppUser {
       avatarUrl: avatarUrl ?? this.avatarUrl,
       email: email ?? this.email,
       description: description ?? this.description,
+      phone: phone ?? this.phone,
     );
   }
 
@@ -71,6 +75,7 @@ class AppUser {
       'avatarUrl': avatarUrl,
       'email': email,
       'description': description,
+      'phone': phone,
     };
   }
 
@@ -94,6 +99,7 @@ class AppUser {
       maxRadiusKm: json['maxRadiusKm'] as int? ?? 10,
       avatarUrl: json['avatarUrl'] as String? ?? 'https://i.pravatar.cc/200?img=13',
       email: json['email'] as String? ?? '',
+      phone: json['phone'] as String? ?? '',
       description: json['description'] as String? ?? '',
     );
   }
@@ -101,14 +107,15 @@ class AppUser {
 
 /// Default mock user fallback
 const AppUser mockUser = AppUser(
-  firstName: 'Julian',
+  firstName: 'Espoti',
   lastName: '',
-  name: 'Julian',
-  code: 'AXBZ12',
+  name: 'Espoti User',
+  code: 'SAVEJAGUAR',
   location: 'Bogotá D.C.',
   preferences: ['Walk', 'Eat'],
   maxRadiusKm: 10,
-  avatarUrl: 'https://i.pravatar.cc/200?img=13',
-  email: 'sj****hk@gmail.com',
-  description: '',
+  avatarUrl: 'https://images.pexels.com/photos/39987037/pexels-photo-39987037.jpeg',
+  email: 'espoti@gmail.com',
+  phone: '0000000000',
+  description: 'Espoti es nuestra mascota, un jaguar que representa la fuerza y la agilidad de nuestra aplicación. ¡Únete a Espoti y descubre nuevas experiencias!',
 );

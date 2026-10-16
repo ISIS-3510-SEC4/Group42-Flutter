@@ -15,14 +15,15 @@ class AvatarSelector extends StatelessWidget {
   });
 
   static const List<String> presetAvatars = [
-    'https://i.pravatar.cc/200?img=13',
-    'https://i.pravatar.cc/200?img=12',
-    'https://i.pravatar.cc/200?img=32',
-    'https://i.pravatar.cc/200?img=47',
-    'https://i.pravatar.cc/200?img=68',
-    'https://i.pravatar.cc/200?img=5',
-    'https://i.pravatar.cc/200?img=8',
-    'https://i.pravatar.cc/200?img=60',
+    'https://images.pexels.com/photos/39987037/pexels-photo-39987037.jpeg',
+    'https://images.pexels.com/photos/39987089/pexels-photo-39987089.jpeg',
+    'https://images.pexels.com/photos/7351036/pexels-photo-7351036.jpeg',
+    'https://images.pexels.com/photos/17333326/pexels-photo-17333326.jpeg',
+    'https://images.pexels.com/photos/6269812/pexels-photo-6269812.jpeg',
+    'https://images.pexels.com/photos/19661440/pexels-photo-19661440.jpeg',
+    'https://images.unsplash.com/photo-1575134003920-524d051a11f2?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Nnx8amFndWFyfGVufDB8MnwwfHx8MA%3D%3D',
+    'https://plus.unsplash.com/premium_photo-1661962819231-1aa10d44631d?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NXx8amFndWFyfGVufDB8MnwwfHx8MA%3D%3D',
+    
   ];
 
   void _showAvatarPickerModal(BuildContext context) {
@@ -60,7 +61,7 @@ class AvatarSelector extends StatelessWidget {
                 ),
                 const SizedBox(height: AppDimensions.paddingM),
                 const Text(
-                  'Elige tu foto de perfil',
+                  'Choose an Avatar',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
@@ -69,7 +70,7 @@ class AvatarSelector extends StatelessWidget {
                 ),
                 const SizedBox(height: AppDimensions.paddingS),
                 const Text(
-                  'Selecciona uno de los avatares disponibles o ingresa el enlace de tu foto:',
+                  'Select one of the available avatars or enter the URL of your photo:',
                   style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: AppDimensions.paddingM),
@@ -106,7 +107,7 @@ class AvatarSelector extends StatelessWidget {
                 TextField(
                   controller: customUrlController,
                   decoration: InputDecoration(
-                    labelText: 'O pega la URL de una foto',
+                    labelText: 'Or enter a custom URL',
                     labelStyle: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                     suffixIcon: IconButton(
                       icon: const Icon(Icons.check, color: AppColors.orange),

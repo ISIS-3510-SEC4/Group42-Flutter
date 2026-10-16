@@ -15,6 +15,7 @@ class AppStrings {
   static const String noAccount = "Don't have an account? ";
   static const String haveAccount = 'Already have an account? ';
   static const String signUp = 'Sign Up';
+  static const String signInWithGoogle = 'Sign in with Google';
 
   // Home
   static const String greeting = 'Hello, Julian';
@@ -28,7 +29,7 @@ class AppStrings {
   static const String support = 'Support';
 
   // Profile
-  static const String helloJulian = 'Hello Julian';
+  static const String helloJulian = 'Hello espoti';
   static const String editProfile = 'Edit Profile';
   static const String yourCode = 'Your code';
   static const String preferences = 'Preferences';
