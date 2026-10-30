@@ -55,15 +55,15 @@ class MeetingDetailPage extends StatelessWidget {
                 children: [
                   Icon(Icons.map, size: 64, color: AppColors.orange50),
                   // Fake pins
-                  const Positioned(
+                  Positioned(
                     top: 50,
                     left: 80,
-                    child: const _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=1'),
+                    child: _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=1'),
                   ),
-                  const Positioned(
+                  Positioned(
                     bottom: 60,
                     right: 90,
-                    child: const _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=2'),
+                    child: _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=2'),
                   ),
                 ],
               ),
