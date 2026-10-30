@@ -120,7 +120,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       if (!mounted) return;
       // Budget-based affordability filter on top of the nearby results.
       final result =
-          BudgetRecommendationService.apply(recommendations, _budget);
+          BudgetRecommendationService.apply(_recommendations, _budget);
       setState(() {
         _recommendations = result.places;
         _budgetRelaxed = result.relaxed;
@@ -207,11 +207,11 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       ..planningCompleted();
     // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
     final horaSalida = DateTime.now();
-    final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
-    AnalyticsService().logStepTime(
-      stepName: 'creacion_reunion_paso_2_votacion',
-      durationSeconds: diferenciaSegundos,
-    );
+    //final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
+   // AnalyticsService().logStepTime(
+     // stepName: 'creacion_reunion_paso_2_votacion',
+      //durationSeconds: diferenciaSegundos,
+    //);
 
     if (_recommendations.isNotEmpty) {
       _reviewTracker.selected(_recommendations[_selectedIndex].placeName);
