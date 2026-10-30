@@ -78,7 +78,7 @@ class WinningPlacePage extends StatelessWidget {
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.winningPlace, style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
-              _PlaceCard(meeting: winner),
+              const _PlaceCard(meeting: winner),
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.winningPlaceReviews,
                   style: _sectionTitleStyle),
