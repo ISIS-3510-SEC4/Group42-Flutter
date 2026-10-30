@@ -4,6 +4,7 @@ import 'firebase_options.dart';
 import 'app/app.dart';
 
 import 'app/routes.dart';
+import 'core/offline/sync_service.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/user_service.dart';
 
@@ -13,8 +14,13 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   ); // Iniciar Firebase
-  
-  await UserService().init();
+
+  // Independent local reads run in parallel: the sync outbox and the user
+  // profile are loaded at the same time instead of one after the other.
+  await Future.wait([
+    SyncService.instance.start(),
+    UserService().init(awaitRemote: false),
+  ]);
 
   final initialRoute =
       AuthService().isAuthenticated ? AppRoutes.home : AppRoutes.welcome;
