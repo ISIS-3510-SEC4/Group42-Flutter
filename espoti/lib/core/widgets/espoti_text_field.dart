@@ -11,6 +11,9 @@ class EspotiTextField extends StatelessWidget {
   final String? errorText;
   final String? hintText;
   final TextInputType keyboardType;
+  final int? maxLength;
+  final double? letterSpacing;
+  final bool showCounter;
 
   const EspotiTextField({
     super.key,
@@ -20,6 +23,9 @@ class EspotiTextField extends StatelessWidget {
     this.errorText,
     this.hintText,
     this.keyboardType = TextInputType.text,
+    this.maxLength,
+    this.letterSpacing,
+    this.showCounter = false,
   });
 
   @override
@@ -29,10 +35,11 @@ class EspotiTextField extends StatelessWidget {
       children: [
         Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             color: AppColors.text,
+            letterSpacing: letterSpacing ?? 0.2,
           ),
         ),
         const SizedBox(height: AppDimensions.paddingS),
@@ -40,10 +47,30 @@ class EspotiTextField extends StatelessWidget {
           controller: controller,
           obscureText: obscureText,
           keyboardType: keyboardType,
-          style: const TextStyle(color: AppColors.text),
+          maxLength: maxLength,
+          buildCounter: (maxLength != null && showCounter)
+              ? (context, {required currentLength, required isFocused, maxLength}) =>
+                  Text(
+                    '$currentLength / $maxLength',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                      letterSpacing: 0.2,
+                    ),
+                  )
+              : null,
+          style: TextStyle(
+            color: AppColors.text,
+            letterSpacing: letterSpacing ?? 0.3,
+          ),
           decoration: InputDecoration(
+            counterText: showCounter ? null : '',
             errorText: errorText,
             hintText: hintText,
+            hintStyle: TextStyle(
+              color: AppColors.textSecondary.withValues(alpha: 0.7),
+              letterSpacing: letterSpacing ?? 0.3,
+            ),
             filled: true,
             fillColor: AppColors.orange50,
             contentPadding: const EdgeInsets.symmetric(
