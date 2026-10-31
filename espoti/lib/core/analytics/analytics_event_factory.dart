@@ -23,9 +23,10 @@ class AnalyticsEventFactory {
     String? step,
     int? durationMs,
     Map<String, Object?> metadata = const {},
+    String? id,
   }) {
     return AnalyticsEvent(
-      id: _idGenerator(),
+      id: id ?? _idGenerator(),
       eventType: type,
       userId: userId,
       timestamp: _clock(),
@@ -78,5 +79,20 @@ class AnalyticsEventFactory {
         meetingId: meetingId,
         placeId: placeId,
         metadata: {'requestId': requestId, 'viewedCount': viewedCount},
+      );
+
+  /// Business question type 4. One event per meeting: the id is derived from
+  /// the meeting id, so retries and edits never create a second event.
+  AnalyticsEvent meetingCreated(
+    String userId, {
+    required String meetingId,
+    required Map<String, Object?> metadata,
+  }) =>
+      _create(
+        AnalyticsEventType.meetingCreated,
+        userId,
+        meetingId: meetingId,
+        metadata: metadata,
+        id: 'meeting_created_$meetingId',
       );
 }
