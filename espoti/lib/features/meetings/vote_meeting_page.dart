@@ -26,6 +26,9 @@ import 'recommendation/weather_service.dart';
 
 enum _StrategyOption { closest, fair }
 
+/// Where the candidate places came from.
+enum _PlacesSource { live, stored, sample }
+
 /// SharedPreferences key of the strategy the user picked last time.
 const _strategyPreferenceKey = 'vote_strategy';
 
@@ -129,6 +132,33 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     return ofZone?.places ?? const [];
   }
 
+  /// Live places (LRU or Overpass); if that fails, the ones saved on this
+  /// device; sample places as a last resort. Never throws, so it can run in
+  /// parallel with the other loads.
+  Future<(List<PlaceCandidate>, _PlacesSource)> _loadCandidates(
+      LatLng location) async {
+    try {
+      final candidates = await _recommendationsService.findCandidates(
+        location,
+        radiusMeters: 2500,
+      );
+      final meetingId = _meetingId;
+      if (meetingId != null) {
+        // The meeting's list, saved in the background for offline use.
+        MeetingCandidatesDatabase.instance
+            .saveCandidates(meetingId, candidates)
+            .catchError((Object error) {
+          debugPrint('Meeting candidates not stored: $error');
+        });
+      }
+      return (candidates, _PlacesSource.live);
+    } catch (_) {
+      final stored = await _storedCandidates(location);
+      if (stored.isNotEmpty) return (stored, _PlacesSource.stored);
+      return (samplePlacesAround(location), _PlacesSource.sample);
+    }
+  }
+
   /// Rain forecast for the meeting time; null if the service is unavailable.
   Future<WeatherForecast?> _loadForecast(LatLng location) async {
     try {
@@ -145,39 +175,16 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       _recommendationsError = null;
     });
     try {
-      final forecastFuture = _loadForecast(location);
-      final strategy = await _loadPreferredStrategy();
-      final participants = await loadParticipants(location);
-      var candidates = const <PlaceCandidate>[];
-      var usingSamplePlaces = false;
-      var usingStoredPlaces = false;
-      try {
-        candidates = await _recommendationsService.findCandidates(
-          location,
-          radiusMeters: 2500,
-        );
-        final meetingId = _meetingId;
-        if (meetingId != null) {
-          // The meeting's list, saved in the background for offline use.
-          MeetingCandidatesDatabase.instance
-              .saveCandidates(meetingId, candidates)
-              .catchError((Object error) {
-            debugPrint('Meeting candidates not stored: $error');
-          });
-        }
-      } catch (_) {
-        final stored = await _storedCandidates(location);
-        if (stored.isNotEmpty) {
-          candidates = stored;
-          usingStoredPlaces = true;
-        } else {
-          candidates = samplePlacesAround(location);
-          usingSamplePlaces = true;
-        }
-      }
-      final forecast = await forecastFuture;
+      // Independent loads run at the same time instead of one after another.
+      final (strategy, participants, (candidates, source), forecast) = await (
+        _loadPreferredStrategy(),
+        loadParticipants(location),
+        _loadCandidates(location),
+        _loadForecast(location),
+      ).wait;
+      final usingSamplePlaces = source == _PlacesSource.sample;
       _reviewTracker.loaded([
-        if (usingStoredPlaces) 'stored_places',
+        if (source == _PlacesSource.stored) 'stored_places',
         if (usingSamplePlaces) 'sample_places',
         if (forecast == null) 'weather_unavailable',
       ], meetingId: _meetingId);
