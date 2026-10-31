@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -64,37 +65,12 @@ out center tags;
       throw Exception('No fue posible consultar lugares cercanos.');
     }
 
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic> || decoded['elements'] is! List) {
-      throw const FormatException(
-          'Respuesta inválida del servicio de lugares.');
-    }
-
-    final candidates = <PlaceCandidate>[];
-    for (final element in decoded['elements'] as List) {
-      if (element is! Map<String, dynamic>) continue;
-      final tags = element['tags'];
-      if (tags is! Map<String, dynamic>) continue;
-
-      final latitude = element['lat'] ?? (element['center'] as Map?)?['lat'];
-      final longitude = element['lon'] ?? (element['center'] as Map?)?['lon'];
-      final name = tags['name'];
-      if (latitude is! num || longitude is! num || name is! String) continue;
-
-      candidates.add(PlaceCandidate(
-        name: name,
-        category: tags['leisure'] == 'park'
-            ? outdoorCategory
-            : switch (tags['amenity']) {
-                'cafe' => 'Cafetería',
-                'restaurant' => 'Restaurante',
-                'fast_food' => 'Comida rápida',
-                'bar' || 'pub' => 'Bar',
-                _ => 'Lugar cercano',
-              },
-        location: LatLng(latitude.toDouble(), longitude.toDouble()),
-      ));
-    }
+    // An Overpass answer can be hundreds of KB: decoding it on another
+    // isolate keeps the UI smooth. The web has no isolates, so it runs inline.
+    final json = response.body;
+    final candidates = kIsWeb
+        ? _parseCandidates(json)
+        : await Isolate.run(() => _parseCandidates(json));
     _cache.put(key, candidates);
     // Saved on disk in the background: the user does not wait for it.
     _store.save(key, candidates).catchError((Object error) {
@@ -132,4 +108,40 @@ out center tags;
   }
 
   void close() => _client.close();
+}
+
+/// Places in an Overpass JSON answer. Top-level so it can run on an isolate.
+List<PlaceCandidate> _parseCandidates(String json) {
+  final decoded = jsonDecode(json);
+  if (decoded is! Map<String, dynamic> || decoded['elements'] is! List) {
+    throw const FormatException(
+        'Respuesta inválida del servicio de lugares.');
+  }
+
+  final candidates = <PlaceCandidate>[];
+  for (final element in decoded['elements'] as List) {
+    if (element is! Map<String, dynamic>) continue;
+    final tags = element['tags'];
+    if (tags is! Map<String, dynamic>) continue;
+
+    final latitude = element['lat'] ?? (element['center'] as Map?)?['lat'];
+    final longitude = element['lon'] ?? (element['center'] as Map?)?['lon'];
+    final name = tags['name'];
+    if (latitude is! num || longitude is! num || name is! String) continue;
+
+    candidates.add(PlaceCandidate(
+      name: name,
+      category: tags['leisure'] == 'park'
+          ? outdoorCategory
+          : switch (tags['amenity']) {
+              'cafe' => 'Cafetería',
+              'restaurant' => 'Restaurante',
+              'fast_food' => 'Comida rápida',
+              'bar' || 'pub' => 'Bar',
+              _ => 'Lugar cercano',
+            },
+      location: LatLng(latitude.toDouble(), longitude.toDouble()),
+    ));
+  }
+  return candidates;
 }
