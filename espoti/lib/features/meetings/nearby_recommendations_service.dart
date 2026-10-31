@@ -1,18 +1,23 @@
 import 'dart:convert';
+import 'dart:isolate';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../../core/cache/lru_cache.dart';
 import '../../models/meeting.dart';
 import 'recommendation/recommendation_strategy.dart';
+import 'zone_places_store.dart';
 
 class NearbyRecommendationsService {
   NearbyRecommendationsService({
     http.Client? client,
     LruCache<String, List<PlaceCandidate>>? cache,
+    ZonePlacesStore? store,
   })  : _client = client ?? http.Client(),
-        _cache = cache ?? _sharedCache;
+        _cache = cache ?? _sharedCache,
+        _store = store ?? ZonePlacesStore();
 
   /// Shared by every screen: the vote page creates a new service each time.
   /// Overpass is slow and rate limited, and places in a zone rarely change.
@@ -20,15 +25,19 @@ class NearbyRecommendationsService {
 
   final http.Client _client;
   final LruCache<String, List<PlaceCandidate>> _cache;
+  final ZonePlacesStore _store;
+
+  // Rounded to ~110 m so taps on the same block reuse the same result.
+  static String _zoneKey(LatLng location, int radiusMeters) =>
+      '${location.latitude.toStringAsFixed(3)},'
+      '${location.longitude.toStringAsFixed(3)},$radiusMeters';
 
   /// Named places around [location], with coordinates and without ranking.
   Future<List<PlaceCandidate>> findCandidates(
     LatLng location, {
     int radiusMeters = 1500,
   }) async {
-    // Rounded to ~110 m so taps on the same block reuse the same result.
-    final key = '${location.latitude.toStringAsFixed(3)},'
-        '${location.longitude.toStringAsFixed(3)},$radiusMeters';
+    final key = _zoneKey(location, radiusMeters);
     final cached = _cache.get(key);
     if (cached != null) return cached;
 
@@ -56,40 +65,26 @@ out center tags;
       throw Exception('No fue posible consultar lugares cercanos.');
     }
 
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map<String, dynamic> || decoded['elements'] is! List) {
-      throw const FormatException(
-          'Respuesta inválida del servicio de lugares.');
-    }
-
-    final candidates = <PlaceCandidate>[];
-    for (final element in decoded['elements'] as List) {
-      if (element is! Map<String, dynamic>) continue;
-      final tags = element['tags'];
-      if (tags is! Map<String, dynamic>) continue;
-
-      final latitude = element['lat'] ?? (element['center'] as Map?)?['lat'];
-      final longitude = element['lon'] ?? (element['center'] as Map?)?['lon'];
-      final name = tags['name'];
-      if (latitude is! num || longitude is! num || name is! String) continue;
-
-      candidates.add(PlaceCandidate(
-        name: name,
-        category: tags['leisure'] == 'park'
-            ? outdoorCategory
-            : switch (tags['amenity']) {
-                'cafe' => 'Cafetería',
-                'restaurant' => 'Restaurante',
-                'fast_food' => 'Comida rápida',
-                'bar' || 'pub' => 'Bar',
-                _ => 'Lugar cercano',
-              },
-        location: LatLng(latitude.toDouble(), longitude.toDouble()),
-      ));
-    }
+    // An Overpass answer can be hundreds of KB: decoding it on another
+    // isolate keeps the UI smooth. The web has no isolates, so it runs inline.
+    final json = response.body;
+    final candidates = kIsWeb
+        ? _parseCandidates(json)
+        : await Isolate.run(() => _parseCandidates(json));
     _cache.put(key, candidates);
+    // Saved on disk in the background: the user does not wait for it.
+    _store.save(key, candidates).catchError((Object error) {
+      debugPrint('Places not stored on disk: $error');
+    });
     return candidates;
   }
+
+  /// Places last found on disk for this zone, used when Overpass fails.
+  Future<StoredPlaces?> storedCandidates(
+    LatLng location, {
+    int radiusMeters = 1500,
+  }) =>
+      _store.read(_zoneKey(location, radiusMeters));
 
   Future<List<Meeting>> findNearbyPlaces(
     LatLng location, {
@@ -113,4 +108,40 @@ out center tags;
   }
 
   void close() => _client.close();
+}
+
+/// Places in an Overpass JSON answer. Top-level so it can run on an isolate.
+List<PlaceCandidate> _parseCandidates(String json) {
+  final decoded = jsonDecode(json);
+  if (decoded is! Map<String, dynamic> || decoded['elements'] is! List) {
+    throw const FormatException(
+        'Respuesta inválida del servicio de lugares.');
+  }
+
+  final candidates = <PlaceCandidate>[];
+  for (final element in decoded['elements'] as List) {
+    if (element is! Map<String, dynamic>) continue;
+    final tags = element['tags'];
+    if (tags is! Map<String, dynamic>) continue;
+
+    final latitude = element['lat'] ?? (element['center'] as Map?)?['lat'];
+    final longitude = element['lon'] ?? (element['center'] as Map?)?['lon'];
+    final name = tags['name'];
+    if (latitude is! num || longitude is! num || name is! String) continue;
+
+    candidates.add(PlaceCandidate(
+      name: name,
+      category: tags['leisure'] == 'park'
+          ? outdoorCategory
+          : switch (tags['amenity']) {
+              'cafe' => 'Cafetería',
+              'restaurant' => 'Restaurante',
+              'fast_food' => 'Comida rápida',
+              'bar' || 'pub' => 'Bar',
+              _ => 'Lugar cercano',
+            },
+      location: LatLng(latitude.toDouble(), longitude.toDouble()),
+    ));
+  }
+  return candidates;
 }

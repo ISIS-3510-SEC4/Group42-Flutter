@@ -48,6 +48,7 @@ class WinningPlacePage extends StatelessWidget {
     final day = (args['day'] as String?)?.trim() ?? '';
     final time = (args['time'] as String?)?.trim() ?? '';
     final transit = args['transitMode'] as String?;
+    final choseOffline = args['offline'] == true;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -67,6 +68,13 @@ class WinningPlacePage extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: AppDimensions.paddingL),
+              if (choseOffline) ...[
+                const Text(
+                  'Sin conexión: el lugar quedó guardado en tu teléfono y se compartirá con el grupo al reconectar.',
+                  style: TextStyle(fontSize: 12, color: AppColors.orange),
+                ),
+                const SizedBox(height: AppDimensions.paddingM),
+              ],
               const Text(AppStrings.youWillMeet, style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
               Row(

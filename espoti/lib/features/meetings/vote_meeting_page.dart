@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
@@ -16,6 +19,7 @@ import '../../core/widgets/attendee_avatars.dart';
 import '../../core/services/meeting_repository.dart';
 import '../../models/meeting_record.dart';
 import 'budget_recommendation_service.dart';
+import 'meeting_candidates_database.dart';
 import 'nearby_recommendations_service.dart';
 import 'recommendation/meeting_schedule.dart';
 import 'recommendation/recommendation_strategy.dart';
@@ -23,6 +27,12 @@ import 'recommendation/simulated_data.dart';
 import 'recommendation/weather_service.dart';
 
 enum _StrategyOption { closest, fair }
+
+/// Where the candidate places came from.
+enum _PlacesSource { live, stored, sample }
+
+/// SharedPreferences key of the strategy the user picked last time.
+const _strategyPreferenceKey = 'vote_strategy';
 
 /// "Create a meeting" (2) — shows the attendees and the
 /// recommendations of places to vote. The chosen place is saved in the meeting.
@@ -45,7 +55,8 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   List<Participant> _participants = const [];
   List<PlaceCandidate> _candidates = const [];
   _StrategyOption _strategyOption = _StrategyOption.fair;
-  bool _usingSamplePlaces = false;
+  _PlacesSource _placesSource = _PlacesSource.live;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   LatLng? _location;
   bool _isLoadingRecommendations = false;
   String? _recommendationsError;
@@ -62,6 +73,19 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   void initState() {
     super.initState();
     AnalyticsService().stepViewed(MeetingPlanningStep.vote);
+    // When the network comes back, a list that came from a fallback (saved or
+    // sample places) reloads by itself with live data.
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((results) {
+      final online = results.any((r) => r != ConnectivityResult.none);
+      final location = _location;
+      if (online &&
+          location != null &&
+          !_isLoadingRecommendations &&
+          _placesSource != _PlacesSource.live) {
+        _loadRecommendations(location);
+      }
+    });
   }
 
   @override
@@ -91,9 +115,65 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     if (!_advanced) {
       AnalyticsService().stepAbandoned(MeetingPlanningStep.vote);
     }
+    _connectivitySubscription?.cancel();
     _recommendationsService.close();
     _weatherService.close();
     super.dispose();
+  }
+
+  /// Strategy picked last time: a single small value, so SharedPreferences.
+  Future<_StrategyOption> _loadPreferredStrategy() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return _StrategyOption.values
+              .asNameMap()[prefs.getString(_strategyPreferenceKey)] ??
+          _StrategyOption.fair;
+    } catch (_) {
+      return _StrategyOption.fair;
+    }
+  }
+
+  /// Places saved on this device: the meeting's own list (SQLite) first, then
+  /// the last places found in the zone (Hive). Empty when there are none.
+  Future<List<PlaceCandidate>> _storedCandidates(LatLng location) async {
+    final meetingId = _meetingId;
+    if (meetingId != null) {
+      final ofMeeting = await MeetingCandidatesDatabase.instance
+          .candidatesOf(meetingId)
+          .catchError((Object _) => const <PlaceCandidate>[]);
+      if (ofMeeting.isNotEmpty) return ofMeeting;
+    }
+    final ofZone = await _recommendationsService
+        .storedCandidates(location, radiusMeters: 2500)
+        .catchError((Object _) => null);
+    return ofZone?.places ?? const [];
+  }
+
+  /// Live places (LRU or Overpass); if that fails, the ones saved on this
+  /// device; sample places as a last resort. Never throws, so it can run in
+  /// parallel with the other loads.
+  Future<(List<PlaceCandidate>, _PlacesSource)> _loadCandidates(
+      LatLng location) async {
+    try {
+      final candidates = await _recommendationsService.findCandidates(
+        location,
+        radiusMeters: 2500,
+      );
+      final meetingId = _meetingId;
+      if (meetingId != null) {
+        // The meeting's list, saved in the background for offline use.
+        MeetingCandidatesDatabase.instance
+            .saveCandidates(meetingId, candidates)
+            .catchError((Object error) {
+          debugPrint('Meeting candidates not stored: $error');
+        });
+      }
+      return (candidates, _PlacesSource.live);
+    } catch (_) {
+      final stored = await _storedCandidates(location);
+      if (stored.isNotEmpty) return (stored, _PlacesSource.stored);
+      return (samplePlacesAround(location), _PlacesSource.sample);
+    }
   }
 
   /// Rain forecast for the meeting time; null if the service is unavailable.
@@ -112,31 +192,26 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       _recommendationsError = null;
     });
     try {
-      final forecastFuture = _loadForecast(location);
-      final participants = await loadParticipants(location);
-      var candidates = const <PlaceCandidate>[];
-      var usingSamplePlaces = false;
-      try {
-        candidates = await _recommendationsService.findCandidates(
-          location,
-          radiusMeters: 2500,
-        );
-      } catch (_) {
-        candidates = samplePlacesAround(location);
-        usingSamplePlaces = true;
-      }
-      final forecast = await forecastFuture;
+      // Independent loads run at the same time instead of one after another.
+      final (strategy, participants, (candidates, source), forecast) = await (
+        _loadPreferredStrategy(),
+        loadParticipants(location),
+        _loadCandidates(location),
+        _loadForecast(location),
+      ).wait;
       _reviewTracker.loaded([
-        if (usingSamplePlaces) 'sample_places',
+        if (source == _PlacesSource.stored) 'stored_places',
+        if (source == _PlacesSource.sample) 'sample_places',
         if (forecast == null) 'weather_unavailable',
       ], meetingId: _meetingId);
       if (!mounted) return;
       setState(() {
         _selectedIndex = 0;
+        _strategyOption = strategy;
         _forecast = forecast;
         _participants = participants;
         _candidates = candidates;
-        _usingSamplePlaces = usingSamplePlaces;
+        _placesSource = source;
         _isLoadingRecommendations = false;
       });
       _applyStrategy();
@@ -191,6 +266,12 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     if (option == _strategyOption || _location == null) return;
     setState(() => _strategyOption = option);
     _applyStrategy();
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setString(_strategyPreferenceKey, option.name))
+        .catchError((Object error) {
+      debugPrint('Strategy preference not saved: $error');
+      return false;
+    });
   }
 
   void _handleNavTap(EspotiNavItem item) {
@@ -249,6 +330,10 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     _reviewTracker.selected(chosen.placeName, meetingId: _meetingId);
 
     setState(() => _savingChoice = true);
+    // Only the organizer writes this choice, so it is safe to queue it while
+    // offline: the sync service uploads it when the network returns.
+    final offline = (await Connectivity().checkConnectivity())
+        .every((r) => r == ConnectivityResult.none);
     try {
       await _saveChosenPlace(chosen);
     } catch (e) {
@@ -271,6 +356,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       'day': args['day'],
       'time': args['time'],
       'transitMode': args['transitMode'],
+      'offline': offline,
     });
   }
 
@@ -390,10 +476,12 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                       fontSize: 12, color: AppColors.textSecondary),
                 ),
                 _WeatherNote(forecast: _forecast, whenLabel: _meetingWhenLabel),
-                if (_usingSamplePlaces)
-                  const Text(
-                    'No se pudo consultar el servicio de lugares: se muestran lugares de ejemplo.',
-                    style: TextStyle(fontSize: 12, color: AppColors.orange),
+                if (_placesSource != _PlacesSource.live)
+                  Text(
+                    _placesSource == _PlacesSource.stored
+                        ? 'Sin conexión con el servicio de lugares: se muestran los lugares guardados en este dispositivo. Se actualizarán al reconectar.'
+                        : 'Sin conexión y sin lugares guardados para esta zona: se muestran lugares de ejemplo. Se actualizarán al reconectar.',
+                    style: const TextStyle(fontSize: 12, color: AppColors.orange),
                   ),
                 const SizedBox(height: AppDimensions.paddingM),
               ],
