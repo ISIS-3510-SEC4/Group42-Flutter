@@ -40,8 +40,10 @@ class CreateMeetingPage extends StatefulWidget {
 
 class _CreateMeetingPageState extends State<CreateMeetingPage> {
   final _activityController = TextEditingController(text: 'Eat');
-  final _dayController = TextEditingController(text: 'Sunday');
-  final _timeController = TextEditingController(text: '2:00 pm');
+  final _dayController = TextEditingController();
+  final _timeController = TextEditingController();
+  DateTime? _selectedDate;
+  TimeOfDay? _selectedTime;
   final _budgetController = TextEditingController();
   //El ? es porque puede quedar vacía
   LatLng? _selectedLocation;
@@ -107,9 +109,96 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
   @override
   void initState() {
     super.initState();
+    // Default to tomorrow (the earliest allowed selectable day)
+    final tomorrow = DateTime.now().add(const Duration(days: 1));
+    _selectedDate = DateTime(tomorrow.year, tomorrow.month, tomorrow.day);
+    _dayController.text = _formatDate(_selectedDate!);
+
+    _selectedTime = const TimeOfDay(hour: 14, minute: 0);
+    _timeController.text = _formatTime(_selectedTime!);
+
     AnalyticsService()
       ..meetingPlanningStarted()
       ..stepViewed(MeetingPlanningStep.details);
+  }
+
+  String _formatDate(DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  String _formatTime(TimeOfDay time) {
+    final hour12 = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final min = time.minute.toString().padLeft(2, '0');
+    final ampm = time.period == DayPeriod.am ? 'am' : 'pm';
+    return '$hour12:$min $ampm';
+  }
+
+  Future<void> _selectDate() async {
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final initialDate = _selectedDate != null && !_selectedDate!.isBefore(tomorrow)
+        ? _selectedDate!
+        : tomorrow;
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: tomorrow,
+      lastDate: DateTime(now.year + 2),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.orange,
+              onPrimary: AppColors.white,
+              surface: AppColors.background,
+              onSurface: AppColors.text,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDate = picked;
+        _dayController.text = _formatDate(picked);
+        _whenError = null;
+      });
+    }
+  }
+
+  Future<void> _selectTime() async {
+    final initial = _selectedTime ?? const TimeOfDay(hour: 14, minute: 0);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.orange,
+              onPrimary: AppColors.white,
+              surface: AppColors.background,
+              onSurface: AppColors.text,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedTime = picked;
+        _timeController.text = _formatTime(picked);
+        _whenError = null;
+      });
+    }
   }
 
   @override
@@ -378,15 +467,35 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
               EspotiTextField(
                 label: AppStrings.whatDay,
                 controller: _dayController,
-                maxLength: 50,
+                readOnly: true,
+                onTap: _selectDate,
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.calendar_month, color: AppColors.primaryBrown),
+                  onPressed: _selectDate,
+                ),
+                hintText: 'Selecciona la fecha',
                 letterSpacing: 0.3,
               ),
               EspotiTextField(
                 label: AppStrings.whatTime,
                 controller: _timeController,
-                maxLength: 50,
+                readOnly: true,
+                onTap: _selectTime,
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.access_time, color: AppColors.primaryBrown),
+                  onPressed: _selectTime,
+                ),
+                hintText: 'Selecciona la hora',
                 letterSpacing: 0.3,
               ),
+              if (_whenError != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: AppDimensions.paddingM),
+                  child: Text(
+                    _whenError!,
+                    style: const TextStyle(color: Colors.red, fontSize: 12),
+                  ),
+                ),
               TransitModeSelector(
                 selected: _transitMode,
                 errorText: _transitError,

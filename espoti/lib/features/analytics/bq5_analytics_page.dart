@@ -545,3 +545,24 @@ class _ErrorState extends StatelessWidget {
     );
   }
 }
+
+class _NoDataPlaceholder extends StatelessWidget {
+  final String label;
+
+  const _NoDataPlaceholder({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 13,
+          color: AppColors.textSecondary,
+          fontStyle: FontStyle.italic,
+        ),
+      ),
+    );
+  }
+}

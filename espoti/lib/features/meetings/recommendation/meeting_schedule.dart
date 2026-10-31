@@ -40,6 +40,15 @@ DateTime? parseMeetingDateTime(String day, String time, {DateTime? now}) {
   final normalizedDay = day.trim().toLowerCase();
 
   DateTime date;
+  // Check for ISO yyyy-MM-dd format (e.g. from date picker)
+  final isoMatch = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(day.trim());
+  if (isoMatch != null) {
+    date = DateTime(
+      int.parse(isoMatch.group(1)!),
+      int.parse(isoMatch.group(2)!),
+      int.parse(isoMatch.group(3)!),
+    );
+  } else 
   if (normalizedDay.isEmpty || normalizedDay == 'today' || normalizedDay == 'hoy') {
     date = today;
   } else if (normalizedDay == 'tomorrow' ||

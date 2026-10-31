@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../models/meeting_record.dart';
 import '../../models/transit_mode.dart';
