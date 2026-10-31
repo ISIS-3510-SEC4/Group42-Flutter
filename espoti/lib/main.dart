@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'firebase_options.dart';
 import 'app/app.dart';
 
@@ -14,6 +15,7 @@ void main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   ); // Iniciar Firebase
+  await Hive.initFlutter();
 
   // Independent local reads run in parallel: the sync outbox and the user
   // profile are loaded at the same time instead of one after the other.

@@ -1,18 +1,22 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
 import '../../core/cache/lru_cache.dart';
 import '../../models/meeting.dart';
 import 'recommendation/recommendation_strategy.dart';
+import 'zone_places_store.dart';
 
 class NearbyRecommendationsService {
   NearbyRecommendationsService({
     http.Client? client,
     LruCache<String, List<PlaceCandidate>>? cache,
+    ZonePlacesStore? store,
   })  : _client = client ?? http.Client(),
-        _cache = cache ?? _sharedCache;
+        _cache = cache ?? _sharedCache,
+        _store = store ?? ZonePlacesStore();
 
   /// Shared by every screen: the vote page creates a new service each time.
   /// Overpass is slow and rate limited, and places in a zone rarely change.
@@ -20,15 +24,19 @@ class NearbyRecommendationsService {
 
   final http.Client _client;
   final LruCache<String, List<PlaceCandidate>> _cache;
+  final ZonePlacesStore _store;
+
+  // Rounded to ~110 m so taps on the same block reuse the same result.
+  static String _zoneKey(LatLng location, int radiusMeters) =>
+      '${location.latitude.toStringAsFixed(3)},'
+      '${location.longitude.toStringAsFixed(3)},$radiusMeters';
 
   /// Named places around [location], with coordinates and without ranking.
   Future<List<PlaceCandidate>> findCandidates(
     LatLng location, {
     int radiusMeters = 1500,
   }) async {
-    // Rounded to ~110 m so taps on the same block reuse the same result.
-    final key = '${location.latitude.toStringAsFixed(3)},'
-        '${location.longitude.toStringAsFixed(3)},$radiusMeters';
+    final key = _zoneKey(location, radiusMeters);
     final cached = _cache.get(key);
     if (cached != null) return cached;
 
@@ -88,8 +96,19 @@ out center tags;
       ));
     }
     _cache.put(key, candidates);
+    // Saved on disk in the background: the user does not wait for it.
+    _store.save(key, candidates).catchError((Object error) {
+      debugPrint('Places not stored on disk: $error');
+    });
     return candidates;
   }
+
+  /// Places last found on disk for this zone, used when Overpass fails.
+  Future<StoredPlaces?> storedCandidates(
+    LatLng location, {
+    int radiusMeters = 1500,
+  }) =>
+      _store.read(_zoneKey(location, radiusMeters));
 
   Future<List<Meeting>> findNearbyPlaces(
     LatLng location, {

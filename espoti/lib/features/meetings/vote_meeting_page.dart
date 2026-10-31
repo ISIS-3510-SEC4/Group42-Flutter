@@ -116,17 +116,28 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       final participants = await loadParticipants(location);
       var candidates = const <PlaceCandidate>[];
       var usingSamplePlaces = false;
+      var usingStoredPlaces = false;
       try {
         candidates = await _recommendationsService.findCandidates(
           location,
           radiusMeters: 2500,
         );
       } catch (_) {
-        candidates = samplePlacesAround(location);
-        usingSamplePlaces = true;
+        // Places saved on disk from an earlier visit, before sample ones.
+        final stored = await _recommendationsService
+            .storedCandidates(location, radiusMeters: 2500)
+            .catchError((Object _) => null);
+        if (stored != null) {
+          candidates = stored.places;
+          usingStoredPlaces = true;
+        } else {
+          candidates = samplePlacesAround(location);
+          usingSamplePlaces = true;
+        }
       }
       final forecast = await forecastFuture;
       _reviewTracker.loaded([
+        if (usingStoredPlaces) 'stored_places',
         if (usingSamplePlaces) 'sample_places',
         if (forecast == null) 'weather_unavailable',
       ], meetingId: _meetingId);
