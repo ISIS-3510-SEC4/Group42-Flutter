@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
@@ -23,6 +24,9 @@ import 'recommendation/simulated_data.dart';
 import 'recommendation/weather_service.dart';
 
 enum _StrategyOption { closest, fair }
+
+/// SharedPreferences key of the strategy the user picked last time.
+const _strategyPreferenceKey = 'vote_strategy';
 
 /// "Create a meeting" (2) — shows the attendees and the
 /// recommendations of places to vote. The chosen place is saved in the meeting.
@@ -96,6 +100,18 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     super.dispose();
   }
 
+  /// Strategy picked last time: a single small value, so SharedPreferences.
+  Future<_StrategyOption> _loadPreferredStrategy() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return _StrategyOption.values
+              .asNameMap()[prefs.getString(_strategyPreferenceKey)] ??
+          _StrategyOption.fair;
+    } catch (_) {
+      return _StrategyOption.fair;
+    }
+  }
+
   /// Rain forecast for the meeting time; null if the service is unavailable.
   Future<WeatherForecast?> _loadForecast(LatLng location) async {
     try {
@@ -113,6 +129,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     });
     try {
       final forecastFuture = _loadForecast(location);
+      final strategy = await _loadPreferredStrategy();
       final participants = await loadParticipants(location);
       var candidates = const <PlaceCandidate>[];
       var usingSamplePlaces = false;
@@ -144,6 +161,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       if (!mounted) return;
       setState(() {
         _selectedIndex = 0;
+        _strategyOption = strategy;
         _forecast = forecast;
         _participants = participants;
         _candidates = candidates;
@@ -202,6 +220,12 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     if (option == _strategyOption || _location == null) return;
     setState(() => _strategyOption = option);
     _applyStrategy();
+    SharedPreferences.getInstance()
+        .then((prefs) => prefs.setString(_strategyPreferenceKey, option.name))
+        .catchError((Object error) {
+      debugPrint('Strategy preference not saved: $error');
+      return false;
+    });
   }
 
   void _handleNavTap(EspotiNavItem item) {
