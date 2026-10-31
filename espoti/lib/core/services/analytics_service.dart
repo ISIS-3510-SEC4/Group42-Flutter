@@ -67,4 +67,11 @@ class AnalyticsService {
     _log('meeting_planning_completed',
         _stepParams(MeetingPlanningStep.result));
   }
+
+  /// Time spent on one planning step (seconds).
+  void logStepTime({required String stepName, required int durationSeconds}) =>
+      _log('meeting_planning_step_time', {
+        'step_name': stepName,
+        'duration_seconds': durationSeconds,
+      });
 }

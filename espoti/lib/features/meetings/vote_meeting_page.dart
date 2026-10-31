@@ -10,7 +10,8 @@ import '../../models/meeting.dart';
 import '../../core/analytics/analytics_tracker.dart';
 import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
-import '../../core/services/analytics_service.dart';
+import '../../core/services/meeting_repository.dart';
+import '../../models/meeting_record.dart';
 import 'budget_recommendation_service.dart';
 import 'nearby_recommendations_service.dart';
 import 'recommendation/meeting_schedule.dart';
@@ -21,7 +22,7 @@ import 'recommendation/weather_service.dart';
 enum _StrategyOption { closest, fair }
 
 /// "Create a meeting" (2) — shows the attendees and the
-/// recommendations of places to vote. Without backend, recommendations are mocked.
+/// recommendations of places to vote. The chosen place is saved in the meeting.
 class VoteMeetingPage extends StatefulWidget {
   const VoteMeetingPage({super.key});
 
@@ -49,6 +50,10 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   int? _budget; // compatible max budget per person (COP), if any
   bool _budgetRelaxed = false;
   bool _advanced = false;
+  String? _meetingId; // meeting saved in step 1 (Firestore id)
+  bool _savingChoice = false;
+  // Time spent on this step (logged when the user votes).
+  final DateTime _horaEntrada = DateTime.now();
 
   @override
   void initState() {
@@ -68,6 +73,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     final time = args['time'] as String? ?? '';
     _meetingMoment = parseMeetingDateTime(day, time);
     if (_meetingMoment != null) _meetingWhenLabel = '$day $time'.trim();
+    _meetingId = args['meetingId'] as String?;
     final location = args['location'];
     final budget = args['budget'];
     if (budget is int) _budget = budget;
@@ -118,12 +124,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       }
       final forecast = await forecastFuture;
       if (!mounted) return;
-      // Budget-based affordability filter on top of the nearby results.
-      final result =
-          BudgetRecommendationService.apply(_recommendations, _budget);
       setState(() {
-        _recommendations = result.places;
-        _budgetRelaxed = result.relaxed;
         _selectedIndex = 0;
         _forecast = forecast;
         _participants = participants;
@@ -168,11 +169,15 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
           imageUrl: '',
         ),
     ];
+    // Budget-based affordability filter on top of the ranked results.
+    final result = BudgetRecommendationService.apply(recommendations, _budget);
     setState(() {
-      _recommendations = recommendations;
+      _recommendations = result.places;
+      _budgetRelaxed = result.relaxed;
       _selectedIndex = 0;
     });
-    _reviewTracker.displayed(resultCount: recommendations.length);
+    _reviewTracker.displayed(
+        resultCount: result.places.length, meetingId: _meetingId);
   }
 
   void _selectStrategy(_StrategyOption option) {
@@ -195,11 +200,31 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       case EspotiNavItem.createMeeting:
         break;
       case EspotiNavItem.friends:
-        break; // TODO: Friends Screen, when it exists
+        Navigator.pushReplacementNamed(context, AppRoutes.friends);
+        break;
     }
   }
 
-  void _handleVote() {
+  /// Stores the chosen place in the meeting (edit of the Firestore doc).
+  Future<void> _saveChosenPlace(Meeting place) async {
+    final id = _meetingId;
+    if (id == null) return;
+    final record = await MeetingRepository.instance.byId(id);
+    if (record == null) return;
+    await MeetingRepository.instance.save(record.copyWith(
+      placeName: place.placeName,
+      placeCategory: place.timeLabel,
+      status: MeetingRecord.scheduled,
+    ));
+  }
+
+  Future<void> _handleVote() async {
+    if (_savingChoice) return;
+    if (_recommendations.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Primero carga las recomendaciones y elige un lugar.')));
+      return;
+    }
     _advanced = true;
     AnalyticsService()
       ..stepCompleted(MeetingPlanningStep.vote)
@@ -207,17 +232,39 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       ..planningCompleted();
     // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
     final horaSalida = DateTime.now();
-    //final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
-   // AnalyticsService().logStepTime(
-     // stepName: 'creacion_reunion_paso_2_votacion',
-      //durationSeconds: diferenciaSegundos,
-    //);
+    final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
+    AnalyticsService().logStepTime(
+      stepName: 'creacion_reunion_paso_2_votacion',
+      durationSeconds: diferenciaSegundos,
+    );
 
-    if (_recommendations.isNotEmpty) {
-      _reviewTracker.selected(_recommendations[_selectedIndex].placeName);
+    final chosen = _recommendations[_selectedIndex];
+    _reviewTracker.selected(chosen.placeName, meetingId: _meetingId);
+
+    setState(() => _savingChoice = true);
+    try {
+      await _saveChosenPlace(chosen);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('No se pudo guardar el lugar elegido: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _savingChoice = false);
     }
+    if (!mounted) return;
 
-    Navigator.pushNamed(context, AppRoutes.winningPlace);
+    final routeArgs = ModalRoute.of(context)?.settings.arguments;
+    final args = routeArgs is Map ? routeArgs : const <dynamic, dynamic>{};
+    Navigator.pushNamed(context, AppRoutes.winningPlace, arguments: {
+      'meetingId': _meetingId,
+      'placeName': chosen.placeName,
+      'placeCategory': chosen.timeLabel,
+      'placeDetail': chosen.distanceLabel,
+      'day': args['day'],
+      'time': args['time'],
+      'transitMode': args['transitMode'],
+    });
   }
 
   void _viewRecommendation(int index) {
@@ -393,7 +440,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                   width: 160,
                   height: AppDimensions.buttonHeight,
                   child: ElevatedButton(
-                    onPressed: _handleVote,
+                    onPressed: _savingChoice ? null : _handleVote,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryBrown,
                       foregroundColor: AppColors.white,
