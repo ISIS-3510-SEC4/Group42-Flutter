@@ -5,7 +5,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/widgets/bottom_navigation.dart';
-import '../../core/widgets/espoti_logo.dart';
+import '../../core/widgets/espoti_top_bar.dart';
 import '../../core/services/user_service.dart';
 
 class FriendsPage extends StatefulWidget {
@@ -39,7 +39,6 @@ class _FriendsPageState extends State<FriendsPage> {
 
   void _handleSearchSubmit(String value) {
     if (value.trim().isEmpty) return;
-    // Friend search has no backend yet: say so instead of failing silently.
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Friend search is not available yet.')),
     );
@@ -53,7 +52,6 @@ class _FriendsPageState extends State<FriendsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Signed-in user's profile (was the hard-coded mock user).
     final user = UserService().currentUser;
 
     return Scaffold(
@@ -69,13 +67,7 @@ class _FriendsPageState extends State<FriendsPage> {
                 AppDimensions.paddingL,
                 0,
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  EspotiLogo(height: AppDimensions.logoSizeSmall),
-                  Icon(Icons.menu, color: AppColors.primaryBrown),
-                ],
-              ),
+              child: EspotiTopBar(),
             ),
             const SizedBox(height: AppDimensions.paddingM),
             
@@ -104,6 +96,8 @@ class _FriendsPageState extends State<FriendsPage> {
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.text,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                               Row(
                                 children: [
@@ -112,9 +106,13 @@ class _FriendsPageState extends State<FriendsPage> {
                                     style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                                   ),
                                   const SizedBox(width: 4),
-                                  Text(
-                                    user.code,
-                                    style: const TextStyle(fontWeight: FontWeight.w700),
+                                  Flexible(
+                                    child: Text(
+                                      user.code,
+                                      style: const TextStyle(fontWeight: FontWeight.w700),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                   const SizedBox(width: 4),
                                   GestureDetector(
@@ -210,6 +208,7 @@ class _FriendsPageState extends State<FriendsPage> {
                       physics: const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: AppDimensions.paddingM,
                       crossAxisSpacing: AppDimensions.paddingM,
+                      childAspectRatio: 0.82,
                       children: const [
                         _FriendItem(name: 'Ana', avatarUrl: 'https://i.pravatar.cc/100?img=1'),
                         _FriendItem(name: 'Raúl', avatarUrl: 'https://i.pravatar.cc/100?img=2'),
@@ -252,10 +251,14 @@ class _FriendItem extends StatelessWidget {
           backgroundImage: NetworkImage(avatarUrl),
         ),
         const SizedBox(height: 4),
-        Text(
-          name,
-          style: const TextStyle(fontSize: 12, color: AppColors.text),
-          overflow: TextOverflow.ellipsis,
+        Flexible(
+          child: Text(
+            name,
+            style: const TextStyle(fontSize: 12, color: AppColors.text),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
         ),
       ],
     );

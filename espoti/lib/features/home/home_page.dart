@@ -7,6 +7,7 @@ import '../../core/services/user_service.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_button.dart';
 import '../../core/widgets/espoti_logo.dart';
+import '../../core/widgets/espoti_top_bar.dart';
 import '../../core/widgets/meeting_card.dart';
 import '../../core/widgets/section_title.dart';
 import '../../models/meeting.dart';
@@ -47,13 +48,7 @@ class HomePage extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: AppDimensions.paddingM),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  EspotiLogo(height: AppDimensions.logoSizeSmall),
-                  Icon(Icons.menu, color: AppColors.primaryBrown),
-                ],
-              ),
+              const EspotiTopBar(),
               const SizedBox(height: AppDimensions.paddingM),
               ValueListenableBuilder<AppUser>(
                 valueListenable: UserService().userNotifier,
@@ -63,6 +58,8 @@ class HomePage extends StatelessWidget {
                   return Text(
                     'Hello, $displayName',
                     style: Theme.of(context).textTheme.headlineMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   );
                 },
               ),

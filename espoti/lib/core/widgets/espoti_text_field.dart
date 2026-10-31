@@ -14,6 +14,9 @@ class EspotiTextField extends StatelessWidget {
   final int? maxLength;
   final double? letterSpacing;
   final bool showCounter;
+  final bool readOnly;
+  final VoidCallback? onTap;
+  final Widget? suffixIcon;
 
   const EspotiTextField({
     super.key,
@@ -26,6 +29,9 @@ class EspotiTextField extends StatelessWidget {
     this.maxLength,
     this.letterSpacing,
     this.showCounter = false,
+    this.readOnly = false,
+    this.onTap,
+    this.suffixIcon,
   });
 
   @override
@@ -47,6 +53,8 @@ class EspotiTextField extends StatelessWidget {
           controller: controller,
           obscureText: obscureText,
           keyboardType: keyboardType,
+          readOnly: readOnly,
+          onTap: onTap,
           maxLength: maxLength,
           buildCounter: (maxLength != null && showCounter)
               ? (context, {required currentLength, required isFocused, maxLength}) =>
@@ -67,6 +75,7 @@ class EspotiTextField extends StatelessWidget {
             counterText: showCounter ? null : '',
             errorText: errorText,
             hintText: hintText,
+            suffixIcon: suffixIcon,
             hintStyle: TextStyle(
               color: AppColors.textSecondary.withValues(alpha: 0.7),
               letterSpacing: letterSpacing ?? 0.3,

@@ -6,6 +6,7 @@ import '../../core/constants/app_strings.dart';
 import '../../core/services/meeting_repository.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_logo.dart';
+import '../../core/widgets/espoti_top_bar.dart';
 import '../../core/widgets/meeting_card.dart';
 import '../../core/widgets/sync_status_banner.dart';
 import '../../models/meeting.dart';
@@ -101,13 +102,7 @@ class _MeetingsPageState extends State<MeetingsPage> {
                 AppDimensions.paddingL,
                 0,
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  EspotiLogo(height: AppDimensions.logoSizeSmall),
-                  Icon(Icons.menu, color: AppColors.primaryBrown),
-                ],
-              ),
+              child: EspotiTopBar(),
             ),
             const SizedBox(height: AppDimensions.paddingM),
             const Padding(

@@ -137,20 +137,21 @@ class SyncService with WidgetsBindingObserver {
 
   // Actualiza el estado de conectividad que observa la interfaz.
   void _onConnectivity() {
-    status.value =
-        status.value.copyWith(online: ConnectivityService.instance.isOnline.value);
+    final online = ConnectivityService.instance.isOnline.value;
+    status.value = status.value.copyWith(online: online);
+    if (online) {
+      debugPrint('SyncService: Network restored. Triggering automatic sync of pending operations...');
+      syncNow();
+    }
   }
 
   // Garantiza que la cola se cargue una sola vez.
   Future<void> _ensureLoaded() => _loading ??= _load();
 
-  // Recupera las operaciones pendientes y fallidas del almacenamiento local.
+  // Recupera las operaciones pendientes y fallidas del almacenamiento local persistente (SQLite / Outbox).
   Future<void> _load() async {
-    final rawQueue = await LocalStore.instance.readJson(LocalStore.outboxKey);
-    final rawFailed = await LocalStore.instance.readJson(LocalStore.deadLetterKey);
-
-    _queue = _parse(rawQueue);
-    _failed = _parse(rawFailed);
+    _queue = await LocalStore.instance.getPendingOperations(deadLetterOnly: false);
+    _failed = await LocalStore.instance.getPendingOperations(deadLetterOnly: true);
 
     _publish();
   }
@@ -160,13 +161,10 @@ class SyncService with WidgetsBindingObserver {
       ? raw.map(PendingOperation.tryFromJson).whereType<PendingOperation>().toList()
       : <PendingOperation>[];
 
-  // Guarda las colas de operaciones pendientes y fallidas en el almacenamiento local.
+  // Guarda las colas de operaciones pendientes y fallidas en el almacenamiento local persistente (SQLite / Outbox).
   Future<void> _persist() async {
-    await LocalStore.instance
-        .writeJson(LocalStore.outboxKey, _queue.map((o) => o.toJson()).toList());
-
-    await LocalStore.instance
-        .writeJson(LocalStore.deadLetterKey, _failed.map((o) => o.toJson()).toList());
+    await LocalStore.instance.savePendingOperations(_queue, isDeadLetter: false);
+    await LocalStore.instance.savePendingOperations(_failed, isDeadLetter: true);
   }
 
   // Actualiza el estado global de sincronización.

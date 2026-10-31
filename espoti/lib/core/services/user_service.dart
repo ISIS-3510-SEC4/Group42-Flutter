@@ -8,6 +8,7 @@ import '../offline/connectivity_service.dart';
 import '../offline/local_store.dart';
 import '../offline/pending_operation.dart';
 import '../offline/sync_service.dart';
+import '../offline/sync_queue.dart';
 
 /// Profile of the signed-in user.
 ///
@@ -93,18 +94,14 @@ class UserService {
 
     try {
       await _writeLocal(uid, user);
-      await SyncService.instance.enqueue(PendingOperation.create(
-        kind: PendingWriteKind.upsert,
-        collection: collection,
-        docId: uid,
-        ownerUid: uid,
+      await SyncQueue.instance.enqueueProfileUpdate(
+        uid: uid,
         data: {
           ..._profileFields(user),
           'firebaseUid': uid,
           if (firebaseUser != null) ..._authFields(firebaseUser),
         },
-        checkConflict: true,
-      ));
+      );
     } catch (e) {
       debugPrint('Error saving user profile: $e');
     }
@@ -123,8 +120,7 @@ class UserService {
     _uid = null;
     try {
       if (uid != null) {
-        await LocalStore.instance.remove(LocalStore.userProfileKey(uid));
-        await LocalStore.instance.remove(LocalStore.userFetchedAtKey(uid));
+        await LocalStore.instance.clearUserProfile(uid);
       }
     } catch (e) {
       debugPrint('Error clearing user profile: $e');
@@ -136,7 +132,7 @@ class UserService {
 
   Future<void> _refreshFromFirestore(String uid, {required bool force}) async {
     final fetchedAt =
-        await LocalStore.instance.readInt(LocalStore.userFetchedAtKey(uid));
+        await LocalStore.instance.getUserFetchedAt(uid);
     final fresh = fetchedAt != null &&
         DateTime.now().millisecondsSinceEpoch - fetchedAt <
             remoteTtl.inMilliseconds;
@@ -155,21 +151,18 @@ class UserService {
         if (_uid == uid) userNotifier.value = remote;
         await _writeLocal(uid, remote);
       }
-      await LocalStore.instance.writeInt(
-          LocalStore.userFetchedAtKey(uid), DateTime.now().millisecondsSinceEpoch);
+      await LocalStore.instance.saveUserFetchedAt(uid, DateTime.now().millisecondsSinceEpoch);
     } catch (e) {
       debugPrint('Profile not refreshed from Firestore: $e');
     }
   }
 
   Future<AppUser?> _readLocal(String uid) async {
-    final raw = await LocalStore.instance.readJson(LocalStore.userProfileKey(uid));
-    if (raw is! Map) return null;
-    return AppUser.fromJson(Map<String, dynamic>.from(raw));
+    return LocalStore.instance.getUserProfile(uid);
   }
 
   Future<void> _writeLocal(String uid, AppUser user) =>
-      LocalStore.instance.writeJson(LocalStore.userProfileKey(uid), user.toJson());
+      LocalStore.instance.saveUserProfile(user, uid);
 
   Future<void> _updateAuthProfile(User firebaseUser, AppUser user) async {
     try {
