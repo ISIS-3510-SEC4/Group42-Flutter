@@ -371,16 +371,21 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
               EspotiTextField(
                 label: AppStrings.whatWillWeDo,
                 controller: _activityController,
-                errorText: _activityError,
+                maxLength: 50,
+                showCounter: true,
+                letterSpacing: 0.3,
               ),
               EspotiTextField(
                 label: AppStrings.whatDay,
                 controller: _dayController,
-                errorText: _whenError,
+                maxLength: 50,
+                letterSpacing: 0.3,
               ),
               EspotiTextField(
                 label: AppStrings.whatTime,
                 controller: _timeController,
+                maxLength: 50,
+                letterSpacing: 0.3,
               ),
               TransitModeSelector(
                 selected: _transitMode,
