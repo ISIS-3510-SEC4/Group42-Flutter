@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:espoti/core/cache/lru_cache.dart';
 import 'package:espoti/features/meetings/recommendation/meeting_schedule.dart';
 import 'package:espoti/features/meetings/recommendation/weather_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -47,7 +48,7 @@ void main() {
         );
 
     test('returns the rain probability for the meeting hour', () async {
-      final service = WeatherService(client: MockClient((_) async => forecast()));
+      final service = WeatherService(client: MockClient((_) async => forecast()), cache: LruCache(1));
 
       final result = await service.forecastAt(
           const LatLng(4.6, -74.07), DateTime(2026, 10, 4, 14));
@@ -57,7 +58,7 @@ void main() {
     });
 
     test('fails when the hour is outside the forecast', () async {
-      final service = WeatherService(client: MockClient((_) async => forecast()));
+      final service = WeatherService(client: MockClient((_) async => forecast()), cache: LruCache(1));
 
       expect(
         service.forecastAt(const LatLng(4.6, -74.07), DateTime(2026, 11, 1, 9)),
@@ -67,7 +68,7 @@ void main() {
 
     test('fails when the service responds with an error', () async {
       final service =
-          WeatherService(client: MockClient((_) async => http.Response('', 500)));
+          WeatherService(client: MockClient((_) async => http.Response('', 500)), cache: LruCache(1));
 
       expect(
         service.forecastAt(const LatLng(4.6, -74.07), DateTime(2026, 10, 4, 14)),

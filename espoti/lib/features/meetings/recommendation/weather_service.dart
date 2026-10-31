@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/cache/lru_cache.dart';
+
 /// Rain at or above this probability (%) counts as "rain likely".
 const rainThreshold = 50;
 
@@ -19,13 +21,29 @@ class WeatherForecast {
 
 /// Hourly rain forecast from Open-Meteo (free, no API key).
 class WeatherService {
-  WeatherService({http.Client? client}) : _client = client ?? http.Client();
+  WeatherService({http.Client? client, LruCache<String, WeatherForecast>? cache})
+      : _client = client ?? http.Client(),
+        _cache = cache ?? _sharedCache;
+
+  /// Shared by every screen. The forecast for a zone and hour does not
+  /// change during a session, so each pair is requested only once.
+  static final _sharedCache = LruCache<String, WeatherForecast>(50);
 
   final http.Client _client;
+  final LruCache<String, WeatherForecast> _cache;
 
   /// Forecast for the hour closest to [when], at [location].
   /// Throws if the service fails or [when] is outside the forecast window.
   Future<WeatherForecast> forecastAt(LatLng location, DateTime when) async {
+    // The API answers in the place's local time, same clock as the form.
+    final target = DateTime(when.year, when.month, when.day, when.hour)
+        .add(Duration(hours: when.minute >= 30 ? 1 : 0));
+    // Rounded to ~1 km: the rain forecast is the same for the whole area.
+    final key = '${location.latitude.toStringAsFixed(2)},'
+        '${location.longitude.toStringAsFixed(2)},$target';
+    final cached = _cache.get(key);
+    if (cached != null) return cached;
+
     final response = await _client.get(Uri.https(
       'api.open-meteo.com',
       '/v1/forecast',
@@ -51,14 +69,14 @@ class WeatherService {
       throw const FormatException('Respuesta inválida del servicio de clima.');
     }
 
-    // The API answers in the place's local time, same clock as the form.
-    final target = DateTime(when.year, when.month, when.day, when.hour)
-        .add(Duration(hours: when.minute >= 30 ? 1 : 0));
     for (var i = 0; i < times.length && i < probabilities.length; i++) {
       final hour = DateTime.tryParse('${times[i]}');
       final probability = probabilities[i];
       if (hour != null && hour == target && probability is num) {
-        return WeatherForecast(time: hour, rainProbability: probability.round());
+        final forecast =
+            WeatherForecast(time: hour, rainProbability: probability.round());
+        _cache.put(key, forecast);
+        return forecast;
       }
     }
     throw StateError('Hora fuera del pronóstico disponible.');
