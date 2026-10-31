@@ -17,6 +17,7 @@ import '../../core/widgets/attendee_avatars.dart';
 import '../../core/services/meeting_repository.dart';
 import '../../models/meeting_record.dart';
 import 'budget_recommendation_service.dart';
+import 'meeting_candidates_database.dart';
 import 'nearby_recommendations_service.dart';
 import 'recommendation/meeting_schedule.dart';
 import 'recommendation/recommendation_strategy.dart';
@@ -112,6 +113,22 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     }
   }
 
+  /// Places saved on this device: the meeting's own list (SQLite) first, then
+  /// the last places found in the zone (Hive). Empty when there are none.
+  Future<List<PlaceCandidate>> _storedCandidates(LatLng location) async {
+    final meetingId = _meetingId;
+    if (meetingId != null) {
+      final ofMeeting = await MeetingCandidatesDatabase.instance
+          .candidatesOf(meetingId)
+          .catchError((Object _) => const <PlaceCandidate>[]);
+      if (ofMeeting.isNotEmpty) return ofMeeting;
+    }
+    final ofZone = await _recommendationsService
+        .storedCandidates(location, radiusMeters: 2500)
+        .catchError((Object _) => null);
+    return ofZone?.places ?? const [];
+  }
+
   /// Rain forecast for the meeting time; null if the service is unavailable.
   Future<WeatherForecast?> _loadForecast(LatLng location) async {
     try {
@@ -139,13 +156,19 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
           location,
           radiusMeters: 2500,
         );
+        final meetingId = _meetingId;
+        if (meetingId != null) {
+          // The meeting's list, saved in the background for offline use.
+          MeetingCandidatesDatabase.instance
+              .saveCandidates(meetingId, candidates)
+              .catchError((Object error) {
+            debugPrint('Meeting candidates not stored: $error');
+          });
+        }
       } catch (_) {
-        // Places saved on disk from an earlier visit, before sample ones.
-        final stored = await _recommendationsService
-            .storedCandidates(location, radiusMeters: 2500)
-            .catchError((Object _) => null);
-        if (stored != null) {
-          candidates = stored.places;
+        final stored = await _storedCandidates(location);
+        if (stored.isNotEmpty) {
+          candidates = stored;
           usingStoredPlaces = true;
         } else {
           candidates = samplePlacesAround(location);
