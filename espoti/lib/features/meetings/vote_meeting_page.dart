@@ -1,3 +1,6 @@
+import 'dart:math' as math;
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import '../../app/routes.dart';
@@ -170,7 +173,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
           timeLabel: place.place.category,
           distanceLabel: place.explanation,
           rating: null,
-          imageUrl: '',
+          imageUrl: _mapThumbnailUrl(place.place.location),
         ),
     ];
     // Budget-based affordability filter on top of the ranked results.
@@ -557,6 +560,33 @@ class _RecommendationsMessage extends StatelessWidget {
   }
 }
 
+/// OpenStreetMap tile that contains [point]: a free picture of the place's
+/// surroundings, cached on the device like OSM's tile usage policy asks.
+String _mapThumbnailUrl(LatLng point, {int zoom = 16}) {
+  final tiles = 1 << zoom;
+  final latitude = point.latitude * math.pi / 180;
+  final x = ((point.longitude + 180) / 360 * tiles).floor();
+  final y = ((1 - math.log(math.tan(latitude) + 1 / math.cos(latitude)) / math.pi) /
+          2 *
+          tiles)
+      .floor();
+  return 'https://tile.openstreetmap.org/$zoom/$x/$y.png';
+}
+
+class _ImagePlaceholder extends StatelessWidget {
+  const _ImagePlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 80,
+      height: 80,
+      color: AppColors.orange50,
+      child: const Icon(Icons.image_outlined, color: AppColors.primaryBrown),
+    );
+  }
+}
+
 /// Recommendation card for a place to vote.
 class _RecommendationCard extends StatelessWidget {
   final Meeting meeting;
@@ -593,13 +623,19 @@ class _RecommendationCard extends StatelessWidget {
               borderRadius: const BorderRadius.horizontal(
                 left: Radius.circular(AppDimensions.radiusM),
               ),
-              child: Container(
-                width: 80,
-                height: 80,
-                color: AppColors.orange50,
-                child: const Icon(Icons.image_outlined,
-                    color: AppColors.primaryBrown),
-              ),
+              child: meeting.imageUrl.isEmpty
+                  ? const _ImagePlaceholder()
+                  : CachedNetworkImage(
+                      imageUrl: meeting.imageUrl,
+                      httpHeaders: const {
+                        'User-Agent': 'Espoti/0.1.0 (Flutter app)',
+                      },
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => const _ImagePlaceholder(),
+                      errorWidget: (_, __, ___) => const _ImagePlaceholder(),
+                    ),
             ),
             const SizedBox(width: AppDimensions.paddingM),
             Expanded(
