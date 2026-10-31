@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -54,6 +56,8 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   List<PlaceCandidate> _candidates = const [];
   _StrategyOption _strategyOption = _StrategyOption.fair;
   bool _usingSamplePlaces = false;
+  _PlacesSource _placesSource = _PlacesSource.live;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   LatLng? _location;
   bool _isLoadingRecommendations = false;
   String? _recommendationsError;
@@ -70,6 +74,19 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   void initState() {
     super.initState();
     AnalyticsService().stepViewed(MeetingPlanningStep.vote);
+    // When the network comes back, a list that came from a fallback (saved or
+    // sample places) reloads by itself with live data.
+    _connectivitySubscription =
+        Connectivity().onConnectivityChanged.listen((results) {
+      final online = results.any((r) => r != ConnectivityResult.none);
+      final location = _location;
+      if (online &&
+          location != null &&
+          !_isLoadingRecommendations &&
+          _placesSource != _PlacesSource.live) {
+        _loadRecommendations(location);
+      }
+    });
   }
 
   @override
@@ -99,6 +116,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     if (!_advanced) {
       AnalyticsService().stepAbandoned(MeetingPlanningStep.vote);
     }
+    _connectivitySubscription?.cancel();
     _recommendationsService.close();
     _weatherService.close();
     super.dispose();
@@ -196,6 +214,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
         _participants = participants;
         _candidates = candidates;
         _usingSamplePlaces = usingSamplePlaces;
+        _placesSource = source;
         _isLoadingRecommendations = false;
       });
       _applyStrategy();
