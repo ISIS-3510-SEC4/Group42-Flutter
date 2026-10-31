@@ -1,32 +1,74 @@
 import 'package:flutter/material.dart';
+import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
-import '../../core/widgets/avatar_group.dart';
+import '../../core/services/meeting_repository.dart';
 import '../../core/widgets/espoti_button.dart';
+import '../../core/widgets/sync_status_banner.dart';
+import '../../models/meeting_record.dart';
+import 'budget_recommendation_service.dart';
 import 'location_sync_widgets.dart';
 
-class MeetingDetailPage extends StatelessWidget {
+/// Detail of a saved meeting. Open with `arguments: {'meetingId': id}`.
+class MeetingDetailPage extends StatefulWidget {
   const MeetingDetailPage({super.key});
 
-  // The detail page has no real meeting id yet (data is mocked).
-  static const _fallbackMeetingId = 'restaurant-los-andes';
+  @override
+  State<MeetingDetailPage> createState() => _MeetingDetailPageState();
+}
+
+class _MeetingDetailPageState extends State<MeetingDetailPage> {
+  String? _meetingId;
+  MeetingRecord? _meeting;
+  bool _loading = true;
+  bool _didReadArgs = false;
+
+  @override
+  void initState() {
+    super.initState();
+    MeetingRepository.instance.changes.addListener(_load);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didReadArgs) return;
+    _didReadArgs = true;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    _meetingId = args is Map ? args['meetingId'] as String? : null;
+    _load();
+  }
+
+  @override
+  void dispose() {
+    MeetingRepository.instance.changes.removeListener(_load);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final id = _meetingId;
+    final meeting = id == null ? null : await MeetingRepository.instance.byId(id);
+    if (!mounted) return;
+    setState(() {
+      _meeting = meeting;
+      _loading = false;
+    });
+  }
+
+  Future<void> _edit() async {
+    await Navigator.pushNamed(
+      context,
+      AppRoutes.createMeeting,
+      arguments: {'meetingId': _meetingId},
+    );
+    _load();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final args = ModalRoute.of(context)?.settings.arguments;
-    final meetingId = (args is Map ? args['meetingId'] as String? : null) ??
-        _fallbackMeetingId;
-
-    // Active meeting: share location depending on movement (accelerometer).
-    return ActiveMeetingLocationSync(
-      meetingId: meetingId,
-      child: _buildScaffold(context, meetingId),
-    );
-  }
-
-  Widget _buildScaffold(BuildContext context, String meetingId) {
-    return Scaffold(
+    final meeting = _meeting;
+    final scaffold = Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: AppColors.background,
@@ -37,152 +79,143 @@ class MeetingDetailPage extends StatelessWidget {
           style: TextStyle(color: AppColors.primaryBrown),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(AppDimensions.paddingL),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Map Placeholder
-            Container(
-              height: 200,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: AppColors.accent1,
-                borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-              ),
-              child: const Stack(
-                alignment: Alignment.center,
-                children: [
-                  Icon(Icons.map, size: 64, color: AppColors.orange50),
-                  // Fake pins
-                  const Positioned(
-                    top: 50,
-                    left: 80,
-                    child: const _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=1'),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : meeting == null
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(AppDimensions.paddingL),
+                    child: Text(
+                      'This meeting is not available on this device.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
                   ),
-                  const Positioned(
-                    bottom: 60,
-                    right: 90,
-                    child: const _MapPin(avatarUrl: 'https://i.pravatar.cc/100?img=2'),
-                  ),
-                ],
-              ),
+                )
+              : _buildBody(meeting),
+    );
+
+    // Active meeting: share location depending on movement (accelerometer).
+    if (meeting == null) return scaffold;
+    return ActiveMeetingLocationSync(meetingId: meeting.id, child: scaffold);
+  }
+
+  Widget _buildBody(MeetingRecord meeting) {
+    final pending = MeetingRepository.instance.isPending(meeting.id);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppDimensions.paddingL),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SyncStatusBanner(),
+          Container(
+            height: 160,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: AppColors.accent1,
+              borderRadius: BorderRadius.circular(AppDimensions.radiusL),
             ),
-            const SizedBox(height: AppDimensions.paddingS),
-            LocationSyncStatusLine(meetingId: meetingId),
-            const SizedBox(height: AppDimensions.paddingM),
-            
-            // Details
-            const Text(
-              'Restaurant Los Andes',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppColors.text,
-              ),
+            child: const Icon(Icons.map, size: 64, color: AppColors.orange50),
+          ),
+          const SizedBox(height: AppDimensions.paddingS),
+          LocationSyncStatusLine(meetingId: meeting.id),
+          const SizedBox(height: AppDimensions.paddingM),
+          Text(
+            meeting.title,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: AppColors.text,
             ),
-            const SizedBox(height: AppDimensions.paddingS),
-            const Row(
+          ),
+          if (meeting.placeCategory != null && meeting.placeCategory!.isNotEmpty)
+            Text(meeting.placeCategory!,
+                style: const TextStyle(color: AppColors.textSecondary)),
+          const SizedBox(height: AppDimensions.paddingM),
+          _InfoRow(icon: Icons.event, text: meeting.whenLabel),
+          _InfoRow(icon: Icons.local_activity_outlined, text: meeting.activity),
+          if (meeting.transitMode != null)
+            _InfoRow(icon: Icons.commute, text: meeting.transitMode!.label),
+          if (meeting.budgetPerPerson != null)
+            _InfoRow(
+              icon: Icons.payments_outlined,
+              text:
+                  'Up to \$${BudgetRecommendationService.formatCop(meeting.budgetPerPerson!)} COP per person',
+            ),
+          if (pending)
+            const _InfoRow(
+                icon: Icons.cloud_upload_outlined,
+                text: 'Saved on this device · pending sync'),
+          const SizedBox(height: AppDimensions.paddingL),
+          const Text(
+            'They are also going:',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: AppColors.text,
+            ),
+          ),
+          const SizedBox(height: AppDimensions.paddingS),
+          if (meeting.inviteeNames.isEmpty)
+            const Text('No invitees yet.',
+                style: TextStyle(color: AppColors.textSecondary))
+          else
+            Wrap(
+              spacing: AppDimensions.paddingS,
+              runSpacing: AppDimensions.paddingS,
               children: [
-                Icon(Icons.star, color: AppColors.orange, size: 20),
-                Text(
-                  ' 4.0',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(width: AppDimensions.paddingL),
-                Icon(Icons.timer, color: AppColors.primaryBrown, size: 20),
-                Text(
-                  ' 30 Minutes',
-                  style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
-                ),
+                for (final name in meeting.inviteeNames)
+                  Chip(
+                    label: Text(name),
+                    backgroundColor: AppColors.orange50,
+                    side: BorderSide.none,
+                  ),
               ],
             ),
-            const SizedBox(height: AppDimensions.paddingM),
-            const Text(
-              '3km from your location',
-              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: AppDimensions.paddingL),
-            
-            // Participants
-            const Text(
-              'They are also going:',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppColors.text,
-              ),
-            ),
-            const SizedBox(height: AppDimensions.paddingS),
-            Row(
-              children: [
-                const Expanded(
-                  child: AvatarGroup(
-                    avatarUrls: [
-                      'https://i.pravatar.cc/100?img=1',
-                      'https://i.pravatar.cc/100?img=2',
-                      'https://i.pravatar.cc/100?img=3',
-                    ],
-                  ),
-                ),
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: const BoxDecoration(
-                    color: AppColors.orange50,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.add, color: AppColors.primaryBrown),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppDimensions.paddingL),
-            
-            // Action Buttons
+          const SizedBox(height: AppDimensions.paddingL),
+          if (meeting.status != MeetingRecord.canceled)
             SizedBox(
               width: double.infinity,
               child: EspotiButton(
-                label: 'Take a photo',
+                label: 'Edit meeting',
                 variant: EspotiButtonVariant.primary,
-                onPressed: () {},
+                onPressed: _edit,
               ),
             ),
-            const SizedBox(height: AppDimensions.paddingM),
-            SizedBox(
-              width: double.infinity,
-              child: EspotiButton(
-                label: 'Cancel',
-                variant: EspotiButtonVariant.secondary,
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-              ),
+          const SizedBox(height: AppDimensions.paddingM),
+          SizedBox(
+            width: double.infinity,
+            child: EspotiButton(
+              label: AppStrings.back,
+              variant: EspotiButtonVariant.secondary,
+              onPressed: () => Navigator.pop(context),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _MapPin extends StatelessWidget {
-  final String avatarUrl;
-  const _MapPin({required this.avatarUrl});
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _InfoRow({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: const BoxDecoration(
-        color: AppColors.white,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+    if (text.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppColors.primaryBrown),
+          const SizedBox(width: AppDimensions.paddingS),
+          Expanded(
+            child: Text(text,
+                style: const TextStyle(fontSize: 15, color: AppColors.textSecondary)),
+          ),
         ],
-      ),
-      child: CircleAvatar(
-        radius: 16,
-        backgroundImage: NetworkImage(avatarUrl),
       ),
     );
   }

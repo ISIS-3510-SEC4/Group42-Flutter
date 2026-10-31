@@ -8,6 +8,14 @@ import '../../core/widgets/espoti_button.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../core/widgets/espoti_text_field.dart';
 import '../../core/services/analytics_service.dart';
+import '../../core/analytics/meeting_creation_tracker.dart';
+import '../../core/services/meeting_repository.dart';
+import '../../core/widgets/sync_status_banner.dart';
+import '../../models/meeting_record.dart';
+import '../../models/transit_mode.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'recommendation/meeting_schedule.dart';
+import 'transit_mode_selector.dart';
 import '../../models/contact.dart';
 import 'budget_recommendation_service.dart';
 import 'contacts_picker_sheet.dart';
@@ -18,7 +26,11 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 
 /// "Create a meeting" screen (1). Arrive from the "+" button
-/// on the bottom nav. When you press Schedule, it goes to step 2 (vote).
+/// on the bottom nav. When you press Schedule, the meeting is saved
+/// (offline-first, see MeetingRepository) and it goes to step 2 (vote).
+///
+/// Edit mode: open it with `arguments: {'meetingId': id}`; Save updates the
+/// same Firestore document and returns to the previous screen.
 class CreateMeetingPage extends StatefulWidget {
   const CreateMeetingPage({super.key});
 
@@ -40,6 +52,57 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
 
   // Sprint 2: funnel analytics.
   bool _advanced = false;
+
+  // Sprint 3: persistence + business question type 4.
+  TransitMode? _transitMode;
+  String? _transitError;
+  String? _activityError;
+  String? _whenError;
+  bool _saving = false;
+  bool _loadingExisting = false;
+  bool _didReadArgs = false;
+  MeetingRecord? _record; // saved meeting (new one after first Schedule)
+  bool _isEditMode = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didReadArgs) return;
+    _didReadArgs = true;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final meetingId = args is Map ? args['meetingId'] as String? : null;
+    if (meetingId != null) {
+      _isEditMode = true;
+      _loadingExisting = true;
+      _loadForEdit(meetingId);
+    }
+  }
+
+  Future<void> _loadForEdit(String meetingId) async {
+    final record = await MeetingRepository.instance.byId(meetingId);
+    if (!mounted) return;
+    setState(() {
+      _loadingExisting = false;
+      if (record == null) return;
+      _record = record;
+      _activityController.text = record.activity;
+      _dayController.text = record.dayLabel;
+      _timeController.text = record.timeLabel;
+      _budgetController.text = record.budgetPerPerson?.toString() ?? '';
+      _transitMode = record.transitMode;
+      if (record.pointLat != null && record.pointLng != null) {
+        _selectedLocation = LatLng(record.pointLat!, record.pointLng!);
+      }
+      _invitees = [
+        for (final name in record.inviteeNames)
+          GoogleContact(id: 'name:$name', name: name, email: ''),
+      ];
+    });
+    if (record == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No se encontró la reunión en este dispositivo.')));
+    }
+  }
 
   @override
   void initState() {
@@ -114,12 +177,106 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     });
   }
 
+  bool _validate() {
+    final scheduled =
+        parseMeetingDateTime(_dayController.text, _timeController.text);
+    setState(() {
+      _activityError = _activityController.text.trim().isEmpty
+          ? 'Tell us what you will do'
+          : null;
+      _whenError = scheduled == null
+          ? 'Use a day like "Sunday", "today" or "tomorrow" and a time like "2:00 pm"'
+          : null;
+      _transitError =
+          _transitMode == null ? 'Choose how the group will get there' : null;
+    });
+    return _activityError == null && _whenError == null && _transitError == null;
+  }
+
+  /// Saves locally first and queues the Firestore write (works offline).
+  /// A second Schedule (after coming back from step 2) edits the same
+  /// meeting instead of creating a duplicate.
+  Future<MeetingRecord?> _saveMeeting(int? budget) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Inicia sesión para crear reuniones.')));
+      return null;
+    }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final scheduledAt =
+        parseMeetingDateTime(_dayController.text, _timeController.text);
+    final names = _invitees.map((c) => c.displayName).toList();
+    final existing = _record;
+    final draft = existing == null
+        ? MeetingRecord(
+            id: MeetingRepository.instance.newId(),
+            organizerId: uid,
+            activity: _activityController.text.trim(),
+            dayLabel: _dayController.text.trim(),
+            timeLabel: _timeController.text.trim(),
+            scheduledAt: scheduledAt,
+            transitMode: _transitMode,
+            budgetPerPerson: budget,
+            inviteeNames: names,
+            pointLat: _selectedLocation?.latitude,
+            pointLng: _selectedLocation?.longitude,
+            createdAtClient: now,
+            updatedAtClient: now,
+          )
+        : existing.copyWith(
+            activity: _activityController.text.trim(),
+            dayLabel: _dayController.text.trim(),
+            timeLabel: _timeController.text.trim(),
+            scheduledAt: scheduledAt,
+            clearScheduledAt: scheduledAt == null,
+            transitMode: _transitMode,
+            budgetPerPerson: budget,
+            clearBudget: budget == null,
+            inviteeNames: names,
+            pointLat: _selectedLocation?.latitude,
+            pointLng: _selectedLocation?.longitude,
+          );
+    try {
+      final saved = await MeetingRepository.instance.save(draft);
+      if (existing == null) {
+        // Business question type 4: one event per new meeting.
+        await MeetingCreationTracker().meetingCreated(saved);
+      }
+      _record = saved;
+      return saved;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('No se pudo guardar la reunión: $e'),
+          backgroundColor: Colors.red.shade700,
+        ));
+      }
+      return null;
+    }
+  }
+
   Future<void> _handleSchedule() async {
+    if (_saving || !_validate()) return;
     // Everyone's maximum budget -> one compatible budget per person.
     final budget = BudgetRecommendationService.compatibleBudget([
       _parseBudget(_budgetController.text),
       ..._inviteeBudgets.values,
     ]);
+
+    setState(() => _saving = true);
+    final saved = await _saveMeeting(budget);
+    if (mounted) setState(() => _saving = false);
+    if (saved == null || !mounted) return;
+
+    if (_isEditMode) {
+      _advanced = true; // editing is not an abandoned planning attempt
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Meeting updated')));
+      Navigator.pop(context, true);
+      return;
+    }
+
     _advanced = true;
     AnalyticsService().stepCompleted(
       MeetingPlanningStep.details,
@@ -138,6 +295,8 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
         'location': _selectedLocation,
         'budget': budget,
         'invitees': _invitees,
+        'meetingId': saved.id,
+        'transitMode': saved.transitMode?.label,
       },
     );
     // Came back from the next step: this step is open again.
@@ -158,7 +317,8 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
       case EspotiNavItem.createMeeting:
         break;
       case EspotiNavItem.friends:
-        break; // TODO:  Add Friends Screen here once it exists
+        Navigator.pushReplacementNamed(context, AppRoutes.friends);
+        break;
     }
   }
 
@@ -181,11 +341,18 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
                   Icon(Icons.menu, color: AppColors.primaryBrown),
                 ],
               ),
-              const SizedBox(height: AppDimensions.paddingL),
+              const SizedBox(height: AppDimensions.paddingS),
+              const SyncStatusBanner(),
+              const SizedBox(height: AppDimensions.paddingS),
               Text(
-                AppStrings.createAMeeting,
+                _isEditMode ? 'Edit meeting' : AppStrings.createAMeeting,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
+              if (_loadingExisting)
+                const Padding(
+                  padding: EdgeInsets.only(top: AppDimensions.paddingM),
+                  child: LinearProgressIndicator(),
+                ),
               const SizedBox(height: AppDimensions.paddingL),
 
               // Who will go?
@@ -220,6 +387,14 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
                 maxLength: 50,
                 letterSpacing: 0.3,
               ),
+              TransitModeSelector(
+                selected: _transitMode,
+                errorText: _transitError,
+                onChanged: (mode) => setState(() {
+                  _transitMode = mode;
+                  _transitError = null;
+                }),
+              ),
               EspotiTextField(
                 label: AppStrings.maxBudgetLabel,
                 controller: _budgetController,
@@ -239,17 +414,18 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
                       color: AppColors.text,
                     ),
                   ),
-                  IconButton(
-                    onPressed: () {
-                      // TODO: open location picker when it exists (google_maps_flutter / flutter_map)
-                    },
-                    icon: const Icon(Icons.search,
+                  // Search is not implemented yet: hint instead of a dead button.
+                  const Tooltip(
+                    message: 'Tap the map to choose the meeting point',
+                    child: Icon(Icons.touch_app,
                         color: Color.fromARGB(255, 143, 64, 11)),
                   ),
                 ],
               ),
               const SizedBox(height: AppDimensions.paddingS),
+              if (!_loadingExisting)
               _LocationMapPreview(
+                initialPosition: _selectedLocation,
                 onLocationSelected: (LatLng point) {
                   setState(() {
                     _selectedLocation = point;
@@ -262,12 +438,25 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
 
               Center(
                 child: EspotiButton(
-                  label: AppStrings.schedule,
+                  label: _isEditMode ? AppStrings.save : AppStrings.schedule,
                   variant: EspotiButtonVariant.secondary,
                   width: 160,
-                  onPressed: _selectedLocation == null ? null : _handleSchedule,
+                  isLoading: _saving,
+                  onPressed: _selectedLocation == null || _loadingExisting
+                      ? null
+                      : _handleSchedule,
                 ),
               ),
+              if (_selectedLocation == null)
+                const Padding(
+                  padding: EdgeInsets.only(top: AppDimensions.paddingS),
+                  child: Center(
+                    child: Text(
+                      'Tap the map to choose the meeting point',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ),
+                ),
               const SizedBox(height: AppDimensions.paddingXL),
             ],
           ),
@@ -345,9 +534,11 @@ class _WhoWillGoRow extends StatelessWidget {
 
 class _LocationMapPreview extends StatefulWidget {
   final Function(LatLng point)? onLocationSelected;
+  final LatLng? initialPosition;
 
   const _LocationMapPreview({
     this.onLocationSelected,
+    this.initialPosition,
   });
 
   @override
@@ -365,7 +556,21 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
   @override
   void initState() {
     super.initState();
-    _getCurrentGPSLocation();
+    final initial = widget.initialPosition;
+    if (initial != null) {
+      // Edit mode: show the saved meeting point instead of the GPS position.
+      _selectedPosition = initial;
+      _mapCenter = initial;
+      _isLoading = false;
+    } else {
+      _getCurrentGPSLocation();
+    }
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    // GPS can answer after the user left the screen.
+    if (mounted) super.setState(fn);
   }
 
   Future<void> _getCurrentGPSLocation() async {
@@ -436,7 +641,7 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
     if (_isLoading) {
       return const Center(
         child:
-            CircularProgressIndicator(color: Color.fromARGB(0, 202, 106, 50)),
+            CircularProgressIndicator(color: Color.fromARGB(255, 202, 106, 50)),
       );
     }
 

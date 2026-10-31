@@ -27,14 +27,27 @@ class WinningPlacePage extends StatelessWidget {
       case EspotiNavItem.createMeeting:
         break;
       case EspotiNavItem.friends:
-        break; // TODO: Friends screen does not exist yet.
+        Navigator.pushReplacementNamed(context, AppRoutes.friends);
+        break;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    const winner = MockMeetings.winningPlace;
-    const reviews = MockMeetings.winningPlaceReviews;
+    final routeArgs = ModalRoute.of(context)?.settings.arguments;
+    final args = routeArgs is Map ? routeArgs : const <dynamic, dynamic>{};
+    final placeName = args['placeName'] as String?;
+    // The place chosen in step 2 (no invented data when it is missing).
+    final winner = Meeting(
+      placeName: placeName ?? 'No place selected',
+      timeLabel: args['placeCategory'] as String? ?? '',
+      distanceLabel: args['placeDetail'] as String? ?? '',
+    );
+    // There is no reviews source for OpenStreetMap places yet.
+    const reviews = <MeetingReview>[];
+    final day = (args['day'] as String?)?.trim() ?? '';
+    final time = (args['time'] as String?)?.trim() ?? '';
+    final transit = args['transitMode'] as String?;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -56,22 +69,29 @@ class WinningPlacePage extends StatelessWidget {
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.youWillMeet, style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
-              const Row(
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  AttendeeAvatars(),
-                  // TODO: Replace with the actual date/time from the form.
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Date: Today',
-                          style:
-                              TextStyle(fontSize: 15, color: AppColors.text)),
-                      Text('Hour: 2 pm',
-                          style:
-                              TextStyle(fontSize: 15, color: AppColors.text)),
-                    ],
+                  const AttendeeAvatars(),
+                  const SizedBox(width: AppDimensions.paddingS),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Date: ${day.isEmpty ? 'Not specified' : day}',
+                            style: const TextStyle(
+                                fontSize: 15, color: AppColors.text)),
+                        Text('Hour: ${time.isEmpty ? 'Not specified' : time}',
+                            style: const TextStyle(
+                                fontSize: 15, color: AppColors.text)),
+                        if (transit != null)
+                          Text('Getting there: $transit',
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary)),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -83,6 +103,9 @@ class WinningPlacePage extends StatelessWidget {
               const Text(AppStrings.winningPlaceReviews,
                   style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
+              if (reviews.isEmpty)
+                const Text('No reviews yet for this place.',
+                    style: TextStyle(color: AppColors.textSecondary)),
               for (final review in reviews) ...[
                 _ReviewCard(review: review),
                 const SizedBox(height: AppDimensions.paddingM),
@@ -93,7 +116,10 @@ class WinningPlacePage extends StatelessWidget {
                   width: 160,
                   height: AppDimensions.buttonHeight,
                   child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
+                    // Planning finished: go to the list where the saved
+                    // meeting now appears (clears the planning screens).
+                    onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                        context, AppRoutes.meetings, (route) => false),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primaryBrown,
                       foregroundColor: AppColors.white,
@@ -104,7 +130,7 @@ class WinningPlacePage extends StatelessWidget {
                       ),
                     ),
                     child: const Text(
-                      AppStrings.back,
+                      'Done',
                       style:
                           TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                     ),
