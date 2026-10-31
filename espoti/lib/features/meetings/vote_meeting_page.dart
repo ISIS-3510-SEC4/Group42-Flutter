@@ -55,7 +55,6 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   List<Participant> _participants = const [];
   List<PlaceCandidate> _candidates = const [];
   _StrategyOption _strategyOption = _StrategyOption.fair;
-  bool _usingSamplePlaces = false;
   _PlacesSource _placesSource = _PlacesSource.live;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   LatLng? _location;
@@ -200,10 +199,9 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
         _loadCandidates(location),
         _loadForecast(location),
       ).wait;
-      final usingSamplePlaces = source == _PlacesSource.sample;
       _reviewTracker.loaded([
         if (source == _PlacesSource.stored) 'stored_places',
-        if (usingSamplePlaces) 'sample_places',
+        if (source == _PlacesSource.sample) 'sample_places',
         if (forecast == null) 'weather_unavailable',
       ], meetingId: _meetingId);
       if (!mounted) return;
@@ -213,7 +211,6 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
         _forecast = forecast;
         _participants = participants;
         _candidates = candidates;
-        _usingSamplePlaces = usingSamplePlaces;
         _placesSource = source;
         _isLoadingRecommendations = false;
       });
@@ -333,6 +330,10 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     _reviewTracker.selected(chosen.placeName, meetingId: _meetingId);
 
     setState(() => _savingChoice = true);
+    // Only the organizer writes this choice, so it is safe to queue it while
+    // offline: the sync service uploads it when the network returns.
+    final offline = (await Connectivity().checkConnectivity())
+        .every((r) => r == ConnectivityResult.none);
     try {
       await _saveChosenPlace(chosen);
     } catch (e) {
@@ -355,6 +356,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       'day': args['day'],
       'time': args['time'],
       'transitMode': args['transitMode'],
+      'offline': offline,
     });
   }
 
@@ -474,10 +476,12 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                       fontSize: 12, color: AppColors.textSecondary),
                 ),
                 _WeatherNote(forecast: _forecast, whenLabel: _meetingWhenLabel),
-                if (_usingSamplePlaces)
-                  const Text(
-                    'No se pudo consultar el servicio de lugares: se muestran lugares de ejemplo.',
-                    style: TextStyle(fontSize: 12, color: AppColors.orange),
+                if (_placesSource != _PlacesSource.live)
+                  Text(
+                    _placesSource == _PlacesSource.stored
+                        ? 'Sin conexión con el servicio de lugares: se muestran los lugares guardados en este dispositivo. Se actualizarán al reconectar.'
+                        : 'Sin conexión y sin lugares guardados para esta zona: se muestran lugares de ejemplo. Se actualizarán al reconectar.',
+                    style: const TextStyle(fontSize: 12, color: AppColors.orange),
                   ),
                 const SizedBox(height: AppDimensions.paddingM),
               ],
