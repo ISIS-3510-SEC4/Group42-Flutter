@@ -123,6 +123,10 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
         usingSamplePlaces = true;
       }
       final forecast = await forecastFuture;
+      _reviewTracker.loaded([
+        if (usingSamplePlaces) 'sample_places',
+        if (forecast == null) 'weather_unavailable',
+      ], meetingId: _meetingId);
       if (!mounted) return;
       setState(() {
         _selectedIndex = 0;

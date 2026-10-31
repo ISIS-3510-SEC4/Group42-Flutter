@@ -8,6 +8,7 @@ import 'analytics_repository.dart';
 
 /// Records recommendation events for one list of recommendations.
 /// Used to answer: how many recommendations do users view before selecting one?
+/// And: what percentage of recommendation requests use fallback data?
 class RecommendationReviewTracker {
   RecommendationReviewTracker({
     AnalyticsRepository? repository,
@@ -64,6 +65,17 @@ class RecommendationReviewTracker {
       requestId: _requestId,
       placeId: placeId,
       viewedCount: viewedCount,
+      meetingId: meetingId,
+    ));
+  }
+
+  /// A list was loaded; [fallbacks] names the data that did not come live.
+  void loaded(List<String> fallbacks, {String? meetingId}) {
+    final userId = _currentUserId();
+    if (userId == null) return;
+    _save(_factory.recommendationLoaded(
+      userId,
+      fallbacks: fallbacks,
       meetingId: meetingId,
     ));
   }
