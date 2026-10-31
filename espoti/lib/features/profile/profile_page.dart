@@ -6,7 +6,7 @@ import '../../core/constants/app_strings.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/user_service.dart';
 import '../../core/widgets/bottom_navigation.dart';
-import '../../core/widgets/espoti_logo.dart';
+import '../../core/widgets/espoti_top_bar.dart';
 import '../../models/user.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -24,7 +24,7 @@ class ProfilePage extends StatelessWidget {
         break;
       case EspotiNavItem.createMeeting:
         Navigator.pushReplacementNamed(context, AppRoutes.createMeeting);
-        break; 
+        break;
       case EspotiNavItem.friends:
         Navigator.pushReplacementNamed(context, AppRoutes.friends);
         break;
@@ -49,19 +49,20 @@ class ProfilePage extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: AppDimensions.paddingM),
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      EspotiLogo(height: AppDimensions.logoSizeSmall),
-                      Icon(Icons.menu, color: AppColors.primaryBrown),
-                    ],
-                  ),
+                  const EspotiTopBar(),
                   const SizedBox(height: AppDimensions.paddingM),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Hello $displayName',
-                          style: Theme.of(context).textTheme.headlineMedium),
+                      Expanded(
+                        child: Text(
+                          'Hello $displayName',
+                          style: Theme.of(context).textTheme.headlineMedium,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: AppDimensions.paddingS),
                       OutlinedButton(
                         onPressed: () {
                           Navigator.pushNamed(context, AppRoutes.editProfile);
@@ -113,11 +114,15 @@ class ProfilePage extends StatelessWidget {
                             ),
                             Row(
                               children: [
-                                Text(
-                                  user.code,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.text,
+                                Flexible(
+                                  child: Text(
+                                    user.code,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.text,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 const SizedBox(width: 6),
@@ -129,6 +134,8 @@ class ProfilePage extends StatelessWidget {
                               user.location,
                               style: const TextStyle(
                                   fontSize: 12, color: AppColors.textSecondary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
@@ -170,18 +177,29 @@ class _InfoRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RichText(
-      text: TextSpan(
-        style: const TextStyle(fontSize: 14, color: AppColors.text),
-        children: [
-          TextSpan(
-              text: '$label: ',
-              style: const TextStyle(fontWeight: FontWeight.w700)),
-          TextSpan(
-              text: value,
-              style: const TextStyle(color: AppColors.textSecondary)),
-        ],
-      ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '$label: ',
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppColors.text,
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textSecondary,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -243,41 +261,63 @@ class _InviteCoffeeCard extends StatelessWidget {
 class _SettingsList extends StatelessWidget {
   const _SettingsList();
 
-  static const _items = [
-    (AppStrings.privacy, Icons.lock_outline),
-    (AppStrings.location, Icons.location_on_outlined),
-    (AppStrings.notification, Icons.notifications_none),
-    (AppStrings.helpUsGrow, Icons.favorite_border),
-    (AppStrings.logOut, Icons.logout),
-    (AppStrings.deleteAccount, Icons.delete_outline),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Column(
-      children: _items
-          .map(
-            (item) => ListTile(
-              onTap: item.$1 == AppStrings.logOut
-                  ? () async {
-                      await AuthService().signOut();
-                      await UserService().clearUser();
-                      if (context.mounted) {
-                        Navigator.pushNamedAndRemoveUntil(
-                          context,
-                          AppRoutes.welcome,
-                          (route) => false,
-                        );
-                      }
-                    }
-                  : null,
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(item.$2, color: AppColors.primaryBrown),
-              title:
-                  Text(item.$1, style: const TextStyle(color: AppColors.text)),
-            ),
-          )
-          .toList(),
+      children: [
+        // Direct link to BQ5 Analytics
+        ListTile(
+          onTap: () => Navigator.pushNamed(context, AppRoutes.bq5Analytics),
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.analytics_outlined, color: AppColors.orange),
+          title: const Text(
+            'Analíticas BQ Tipo 5',
+            style: TextStyle(color: AppColors.text, fontWeight: FontWeight.bold),
+          ),
+          subtitle: const Text(
+            'Tasa de aceptación y patrones de recomendación',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+        ),
+        const Divider(height: 1, color: AppColors.mauve30),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.lock_outline, color: AppColors.primaryBrown),
+          title: const Text(AppStrings.privacy, style: TextStyle(color: AppColors.text)),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.location_on_outlined, color: AppColors.primaryBrown),
+          title: const Text(AppStrings.location, style: TextStyle(color: AppColors.text)),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.notifications_none, color: AppColors.primaryBrown),
+          title: const Text(AppStrings.notification, style: TextStyle(color: AppColors.text)),
+        ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.favorite_border, color: AppColors.primaryBrown),
+          title: const Text(AppStrings.helpUsGrow, style: TextStyle(color: AppColors.text)),
+        ),
+        ListTile(
+          onTap: () async {
+            await AuthService().signOut();
+            await UserService().clearUser();
+            if (context.mounted) {
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.welcome,
+                (route) => false,
+              );
+            }
+          },
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.logout, color: AppColors.primaryBrown),
+          title: const Text(AppStrings.logOut, style: TextStyle(color: AppColors.text)),
+        ),
+      ],
     );
   }
 }

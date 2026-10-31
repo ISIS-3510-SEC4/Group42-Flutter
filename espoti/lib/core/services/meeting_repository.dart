@@ -207,19 +207,15 @@ class MeetingRepository {
   }
 
   Future<_Snapshot> _loadSnapshot(String uid) async {
+    final meetings = await LocalStore.instance.getMeetings(uid);
     final raw = await LocalStore.instance.readJson(LocalStore.meetingsKey(uid));
-    if (raw is! Map) return const _Snapshot(null, {});
-    final fetchedAt = raw['fetchedAt'];
+    final fetchedAt = raw is Map ? raw['fetchedAt'] : null;
+
     final records = <String, MeetingRecord>{};
-    final list = raw['records'];
-    if (list is List) {
-      for (final item in list) {
-        if (item is Map) {
-          final record = MeetingRecord.tryFromMap(Map<String, dynamic>.from(item));
-          if (record != null) records[record.id] = record;
-        }
-      }
+    for (final m in meetings) {
+      records[m.id] = m;
     }
+
     return _Snapshot(
       fetchedAt is int && fetchedAt > 0
           ? DateTime.fromMillisecondsSinceEpoch(fetchedAt)
@@ -230,10 +226,11 @@ class MeetingRepository {
 
   Future<void> _saveSnapshot(
       String uid, Map<String, MeetingRecord> records, DateTime? fetchedAt) {
-    return LocalStore.instance.writeJson(LocalStore.meetingsKey(uid), {
-      'fetchedAt': fetchedAt?.millisecondsSinceEpoch ?? 0,
-      'records': records.values.map((r) => r.toJson()).toList(),
-    });
+    return LocalStore.instance.saveMeetings(
+      uid,
+      records.values.toList(),
+      fetchedAt: fetchedAt,
+    );
   }
 }
 

@@ -11,6 +11,7 @@ import '../features/profile/profile_page.dart';
 import '../features/friends/friends_page.dart';
 import '../features/meetings/meeting_detail_page.dart';
 import '../features/profile/edit_profile_page.dart';
+import '../features/analytics/bq5_analytics_page.dart';
 
 class AppRoutes {
   AppRoutes._();
@@ -31,6 +32,7 @@ class AppRoutes {
   static const String friends = '/friends';
   static const String createMeetingRecommendations = '/create-meeting-recommendations';
   static const String editProfile = '/edit-profile';
+  static const String bq5Analytics = '/analytics-bq5';
 
   /// Asociar nombres de rutas con sus respectivas páginas
   static Map<String, WidgetBuilder> get routes => {
@@ -46,5 +48,6 @@ class AppRoutes {
         friends: (context) => const FriendsPage(),
         meetingDetail: (context) => const MeetingDetailPage(),
         editProfile: (context) => const EditProfilePage(),
+        bq5Analytics: (context) => const Bq5AnalyticsPage(),
       };
 }

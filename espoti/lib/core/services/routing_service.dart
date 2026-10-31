@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import '../concurrency/geo_isolate.dart';
 
 class RouteRecommendation {
   final List<LatLng> points;
@@ -60,20 +61,14 @@ class RoutingService {
       final response = await httpClient.get(url);
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['code'] == 'Ok' &&
-            data['routes'] != null &&
-            (data['routes'] as List).isNotEmpty) {
-          final route = data['routes'][0];
-          final distanceMeters = (route['distance'] as num).toDouble();
-          final distanceKm = distanceMeters / 1000.0;
-          final coordinates = route['geometry']['coordinates'] as List;
-
-          final points = coordinates.map<LatLng>((coord) {
-            final lng = (coord[0] as num).toDouble();
-            final lat = (coord[1] as num).toDouble();
-            return LatLng(lat, lng);
-          }).toList();
+        // Offload route parsing and coordinate mapping to background Isolate
+        final parsed = await GeoIsolate.parseOsrmRoute(response.body);
+        if (parsed != null) {
+          final rawPoints = parsed['points'] as List;
+          final points = rawPoints
+              .map<LatLng>((p) => LatLng((p[0] as num).toDouble(), (p[1] as num).toDouble()))
+              .toList();
+          final distanceKm = (parsed['distanceMeters'] as num).toDouble() / 1000.0;
 
           return RouteRecommendation(
             points: points,
