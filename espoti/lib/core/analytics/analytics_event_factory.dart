@@ -81,6 +81,20 @@ class AnalyticsEventFactory {
         metadata: {'requestId': requestId, 'viewedCount': viewedCount},
       );
 
+  /// Business question type 1: one event per loaded list of recommendations,
+  /// with the fallback data it used (empty when everything came live).
+  AnalyticsEvent recommendationLoaded(
+    String userId, {
+    required List<String> fallbacks,
+    String? meetingId,
+  }) =>
+      _create(
+        AnalyticsEventType.recommendationLoaded,
+        userId,
+        meetingId: meetingId,
+        metadata: {'fallbacks': fallbacks},
+      );
+
   /// Business question type 4. One event per meeting: the id is derived from
   /// the meeting id, so retries and edits never create a second event.
   AnalyticsEvent meetingCreated(

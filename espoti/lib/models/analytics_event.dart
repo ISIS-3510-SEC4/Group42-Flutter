@@ -3,6 +3,7 @@ enum AnalyticsEventType {
   recommendationDisplayed('RECOMMENDATION_DISPLAYED'),
   recommendationViewed('RECOMMENDATION_VIEWED'),
   recommendationSelected('RECOMMENDATION_SELECTED'),
+  recommendationLoaded('RECOMMENDATION_LOADED'),
   planningStepStarted('PLANNING_STEP_STARTED'),
   planningStepCompleted('PLANNING_STEP_COMPLETED'),
   planningFlowAbandoned('PLANNING_FLOW_ABANDONED'),
