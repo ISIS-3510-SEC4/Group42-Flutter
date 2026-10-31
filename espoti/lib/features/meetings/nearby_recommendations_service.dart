@@ -3,20 +3,35 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../../core/cache/lru_cache.dart';
 import '../../models/meeting.dart';
 import 'recommendation/recommendation_strategy.dart';
 
 class NearbyRecommendationsService {
-  NearbyRecommendationsService({http.Client? client})
-      : _client = client ?? http.Client();
+  NearbyRecommendationsService({
+    http.Client? client,
+    LruCache<String, List<PlaceCandidate>>? cache,
+  })  : _client = client ?? http.Client(),
+        _cache = cache ?? _sharedCache;
+
+  /// Shared by every screen: the vote page creates a new service each time.
+  /// Overpass is slow and rate limited, and places in a zone rarely change.
+  static final _sharedCache = LruCache<String, List<PlaceCandidate>>(20);
 
   final http.Client _client;
+  final LruCache<String, List<PlaceCandidate>> _cache;
 
   /// Named places around [location], with coordinates and without ranking.
   Future<List<PlaceCandidate>> findCandidates(
     LatLng location, {
     int radiusMeters = 1500,
   }) async {
+    // Rounded to ~110 m so taps on the same block reuse the same result.
+    final key = '${location.latitude.toStringAsFixed(3)},'
+        '${location.longitude.toStringAsFixed(3)},$radiusMeters';
+    final cached = _cache.get(key);
+    if (cached != null) return cached;
+
     final query = '''
 [out:json][timeout:25];
 (
@@ -72,6 +87,7 @@ out center tags;
         location: LatLng(latitude.toDouble(), longitude.toDouble()),
       ));
     }
+    _cache.put(key, candidates);
     return candidates;
   }
 
