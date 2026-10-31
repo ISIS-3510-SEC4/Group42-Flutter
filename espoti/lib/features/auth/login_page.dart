@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
@@ -8,6 +9,7 @@ import '../../core/widgets/espoti_logo.dart';
 import '../../core/widgets/espoti_text_field.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/user_service.dart';
+import '../../core/offline/connectivity_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -33,6 +35,38 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  /// Login is a protected view: Firebase Auth needs the network.
+  Future<bool> _ensureOnline() async {
+    if (await ConnectivityService.instance.check()) return true;
+    _showError('Sin conexión. Conéctate a internet para iniciar sesión.');
+    return false;
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red.shade700),
+    );
+  }
+
+  Future<void> _handleForgotPassword() async {
+    final email = _emailController.text.trim();
+    if (!AuthService.isValidEmailDomain(email)) {
+      setState(() => _emailError = 'Enter your email to reset the password');
+      return;
+    }
+    if (!await _ensureOnline()) return;
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Te enviamos un correo a $email para restablecer la contraseña.')),
+      );
+    } on FirebaseAuthException catch (e) {
+      _showError(AuthService.getReadableAuthError(e));
+    }
+  }
+
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final isValidDomain = AuthService.isValidEmailDomain(email);
@@ -49,6 +83,7 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     if (_emailError != null || _passwordError != null) return;
+    if (!await _ensureOnline()) return;
 
     setState(() => _isLoading = true);
 
@@ -80,6 +115,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _handleGoogleLogin() async {
     if (_isLoading) return;
+    if (!await _ensureOnline()) return;
     setState(() => _isLoading = true);
     try {
       final credential = await _authService.signInWithGoogle();
@@ -163,10 +199,9 @@ class _LoginPageState extends State<LoginPage> {
                 ],
               ),
               const SizedBox(height: AppDimensions.paddingS),
-              // "Forgot Password?" Aun no esta implementado
               Center(
                 child: TextButton(
-                  onPressed: null,
+                  onPressed: _isLoading ? null : _handleForgotPassword,
                   child: Text(
                     AppStrings.forgotPassword,
                     style: TextStyle(color: AppColors.orange.withValues(alpha: 0.8)),

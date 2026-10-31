@@ -1,0 +1,46 @@
+rules_version = '2';
+
+// Suggested rules for the collections used by the Flutter app.
+// NOT deployed automatically: review them and publish from the Firebase
+// console (Firestore > Rules) or with `firebase deploy --only firestore:rules`.
+// They must stay compatible with the Kotlin app that shares the project.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // One profile per Firebase uid.
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.firebaseUid == uid;
+      allow delete: if false;
+    }
+
+    // Meetings: only the organizer can write.
+    match /meetings/{meetingId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.organizerId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.organizerId == request.auth.uid
+        && request.resource.data.organizerId == request.auth.uid;
+      allow delete: if false;
+
+      // Live participant locations (existing feature).
+      match /locations/{uid} {
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == uid;
+      }
+    }
+
+    // Analytics events are append-only from the apps.
+    match /analytics_events/{eventId} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      // The sync service reads the doc inside a transaction to avoid duplicates.
+      allow get: if signedIn()
+        && (resource == null || resource.data.userId == request.auth.uid);
+      allow list, update, delete: if false;
+    }
+  }
+}

@@ -10,6 +10,7 @@ import '../../core/widgets/espoti_text_field.dart';
 import '../../core/widgets/preference_selector.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/user_service.dart';
+import '../../core/offline/connectivity_service.dart';
 import '../../models/user.dart';
 
 class RegisterPage extends StatefulWidget {
@@ -55,8 +56,21 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
 
+  /// Registration is a protected view: Firebase Auth needs the network.
+  Future<bool> _ensureOnline() async {
+    if (await ConnectivityService.instance.check()) return true;
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Sin conexión. Conéctate a internet para registrarte.'),
+        backgroundColor: Colors.red.shade700,
+      ));
+    }
+    return false;
+  }
+
   Future<void> _handleGoogleLogin() async {
     if (_isLoading) return;
+    if (!await _ensureOnline()) return;
     setState(() => _isLoading = true);
     try {
       final credential = await _authService.signInWithGoogle();
@@ -137,6 +151,7 @@ class _RegisterPageState extends State<RegisterPage> {
         _preferencesError == null;
 
     if (!isValid) return;
+    if (!await _ensureOnline()) return;
 
     setState(() => _isLoading = true);
 
@@ -146,7 +161,7 @@ class _RegisterPageState extends State<RegisterPage> {
         password: _passwordController.text,
       );
 
-      final uid = credential.user?.uid ?? '1234';
+      final uid = credential.user!.uid;
       final code = 'ESP${(uid.hashCode % 9000 + 1000).abs()}';
       final firstName = _firstNameController.text.trim();
       final lastName = _lastNameController.text.trim();
