@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:espoti/core/cache/lru_cache.dart';
 import 'package:espoti/features/meetings/nearby_recommendations_service.dart';
 import 'package:espoti/features/meetings/recommendation/recommendation_strategy.dart';
 
@@ -39,7 +40,7 @@ void main() {
         200,
       );
     });
-    final service = NearbyRecommendationsService(client: client);
+    final service = NearbyRecommendationsService(client: client, cache: LruCache(1));
     addTearDown(service.close);
 
     final places = await service.findNearbyPlaces(const LatLng(0, 0));
@@ -71,7 +72,7 @@ void main() {
         200,
       );
     });
-    final service = NearbyRecommendationsService(client: client);
+    final service = NearbyRecommendationsService(client: client, cache: LruCache(1));
     addTearDown(service.close);
 
     final candidates = await service.findCandidates(const LatLng(0, 0));
