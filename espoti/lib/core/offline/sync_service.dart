@@ -137,8 +137,12 @@ class SyncService with WidgetsBindingObserver {
 
   // Actualiza el estado de conectividad que observa la interfaz.
   void _onConnectivity() {
-    status.value =
-        status.value.copyWith(online: ConnectivityService.instance.isOnline.value);
+    final online = ConnectivityService.instance.isOnline.value;
+    status.value = status.value.copyWith(online: online);
+    if (online) {
+      debugPrint('SyncService: Network restored. Triggering automatic sync of pending operations...');
+      syncNow();
+    }
   }
 
   // Garantiza que la cola se cargue una sola vez.

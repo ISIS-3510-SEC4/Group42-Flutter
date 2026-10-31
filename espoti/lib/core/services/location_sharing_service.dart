@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 
 import 'activity_context_service.dart';
 import 'meeting_location_service.dart';
+import '../offline/local_store.dart';
 
 /// State of the location sharing.
 enum LocationSyncStatus {
@@ -153,6 +154,7 @@ class LocationSharingService {
       debugPrint(
         'Location updated: ${position.latitude}, ${position.longitude}',
       );
+      unawaited(LocalStore.instance.saveLastLocation(position.latitude, position.longitude));
 
       _lastSent = position;
       _lastSentAt = DateTime.now();

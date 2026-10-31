@@ -272,4 +272,33 @@ class LocalStore {
     } catch (_) {}
     await (await _prefs).remove(key);
   }
+
+  // ===========================================================================
+  // LAST KNOWN GPS LOCATION
+  // ===========================================================================
+
+  Future<void> saveLastLocation(double lat, double lng) async {
+    try {
+      await _db.saveLastLocation(lat, lng);
+    } catch (_) {}
+    try {
+      final prefs = await _prefs;
+      await prefs.setDouble('last_known_gps_lat', lat);
+      await prefs.setDouble('last_known_gps_lng', lng);
+    } catch (_) {}
+  }
+
+  Future<Map<String, double>?> getLastLocation() async {
+    try {
+      final loc = await _db.getLastLocation();
+      if (loc != null) return loc;
+    } catch (_) {}
+    try {
+      final prefs = await _prefs;
+      final lat = prefs.getDouble('last_known_gps_lat');
+      final lng = prefs.getDouble('last_known_gps_lng');
+      if (lat != null && lng != null) return {'lat': lat, 'lng': lng};
+    } catch (_) {}
+    return null;
+  }
 }

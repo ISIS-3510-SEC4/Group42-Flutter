@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
+import '../../../core/concurrency/geo_isolate.dart';
 
 class Participant {
   const Participant({required this.name, required this.location});
@@ -114,6 +115,44 @@ class FairTravelStrategy extends RecommendationStrategy {
       ));
     }
     return _sorted(ranked);
+  }
+
+  /// Calculates rankings in a background Dart Isolate to prevent UI frame drops.
+  Future<List<RankedPlace>> rankAsync(
+    List<PlaceCandidate> candidates,
+    List<Participant> participants,
+  ) async {
+    if (participants.isEmpty) return const [];
+    final rawCandidates = candidates.asMap().entries.map((e) => {
+      'index': e.key,
+      'name': e.value.name,
+      'category': e.value.category,
+      'lat': e.value.location.latitude,
+      'lng': e.value.location.longitude,
+    }).toList();
+
+    final rawParticipants = participants.map((p) => {
+      'name': p.name,
+      'lat': p.location.latitude,
+      'lng': p.location.longitude,
+    }).toList();
+
+    final isolateResults = await GeoIsolate.rankPlacesFairTravel(
+      rawCandidates: rawCandidates,
+      rawParticipants: rawParticipants,
+    );
+
+    return isolateResults.map((res) {
+      final candMap = res['candidate'] as Map<String, dynamic>;
+      final index = candMap['index'] as int;
+      final maxDist = (res['maxDistance'] as num).toDouble();
+      final minDist = (res['minDistance'] as num).toDouble();
+      return RankedPlace(
+        place: candidates[index],
+        score: (res['score'] as num).toDouble(),
+        explanation: 'Máx. ${formatDistance(maxDist)} · diferencia ${formatDistance(maxDist - minDist)}',
+      );
+    }).toList();
   }
 }
 

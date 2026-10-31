@@ -589,4 +589,23 @@ class AppDatabase {
     if (db == null) return;
     await db.delete('key_value_store', where: 'key = ?', whereArgs: [key]);
   }
+
+  // ===========================================================================
+  // LAST KNOWN GPS LOCATION
+  // ===========================================================================
+
+  Future<void> saveLastLocation(double lat, double lng) async {
+    await setKvString('last_known_gps_lat', lat.toString());
+    await setKvString('last_known_gps_lng', lng.toString());
+  }
+
+  Future<Map<String, double>?> getLastLocation() async {
+    final latStr = await getKvString('last_known_gps_lat');
+    final lngStr = await getKvString('last_known_gps_lng');
+    if (latStr == null || lngStr == null) return null;
+    final lat = double.tryParse(latStr);
+    final lng = double.tryParse(lngStr);
+    if (lat == null || lng == null) return null;
+    return {'lat': lat, 'lng': lng};
+  }
 }

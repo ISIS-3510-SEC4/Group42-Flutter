@@ -8,6 +8,7 @@ import '../offline/connectivity_service.dart';
 import '../offline/local_store.dart';
 import '../offline/pending_operation.dart';
 import '../offline/sync_service.dart';
+import '../offline/sync_queue.dart';
 
 /// Profile of the signed-in user.
 ///
@@ -93,18 +94,14 @@ class UserService {
 
     try {
       await _writeLocal(uid, user);
-      await SyncService.instance.enqueue(PendingOperation.create(
-        kind: PendingWriteKind.upsert,
-        collection: collection,
-        docId: uid,
-        ownerUid: uid,
+      await SyncQueue.instance.enqueueProfileUpdate(
+        uid: uid,
         data: {
           ..._profileFields(user),
           'firebaseUid': uid,
           if (firebaseUser != null) ..._authFields(firebaseUser),
         },
-        checkConflict: true,
-      ));
+      );
     } catch (e) {
       debugPrint('Error saving user profile: $e');
     }
