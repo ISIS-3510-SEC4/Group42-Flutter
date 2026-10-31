@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
@@ -79,8 +80,8 @@ class ContactsService {
           response = await _client
               .get(uri, headers: {'Authorization': 'Bearer $token'});
 
-          print('CONTACTS STATUS: ${response.statusCode}');
-          print('CONTACTS RESPONSE: ${response.body}');
+          // Status only: the body holds the user's contacts (personal data).
+          debugPrint('CONTACTS STATUS: ${response.statusCode}');
       } catch (_) {
         throw const ContactsException(
             'Error de conexión al cargar tus contactos.');

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_logo.dart';
-import '../../models/user.dart';
+import '../../core/services/user_service.dart';
 
 class FriendsPage extends StatefulWidget {
   const FriendsPage({super.key});
@@ -38,7 +39,10 @@ class _FriendsPageState extends State<FriendsPage> {
 
   void _handleSearchSubmit(String value) {
     if (value.trim().isEmpty) return;
-    print('Buscando código: $value');
+    // Friend search has no backend yet: say so instead of failing silently.
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Friend search is not available yet.')),
+    );
   }
 
   @override
@@ -49,7 +53,8 @@ class _FriendsPageState extends State<FriendsPage> {
 
   @override
   Widget build(BuildContext context) {
-    const user = mockUser;
+    // Signed-in user's profile (was the hard-coded mock user).
+    final user = UserService().currentUser;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -112,7 +117,16 @@ class _FriendsPageState extends State<FriendsPage> {
                                     style: const TextStyle(fontWeight: FontWeight.w700),
                                   ),
                                   const SizedBox(width: 4),
-                                  const Icon(Icons.copy, size: 14, color: AppColors.orange),
+                                  GestureDetector(
+                                    onTap: () async {
+                                      await Clipboard.setData(ClipboardData(text: user.code));
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text('Code copied')),
+                                      );
+                                    },
+                                    child: const Icon(Icons.copy, size: 14, color: AppColors.orange),
+                                  ),
                                 ],
                               ),
                             ],
