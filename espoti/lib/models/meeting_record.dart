@@ -51,8 +51,6 @@ class MeetingInvitee {
   }
 }
 
-// Entidad guardada en Firestore meetings/{id}. Asociaciones: organizerId = uid
-// de Firebase del organizador; inviteeEmails = correos de los invitados.
 /// A meeting created by the user and persisted in Firestore (`meetings/{id}`).
 ///
 /// `Meeting` (models/meeting.dart) stays as the lightweight view model used by
@@ -66,7 +64,6 @@ class MeetingRecord {
   final String dayLabel;
   final String timeLabel;
   final DateTime? scheduledAt;
-  // BQ tipo 4: medio de transporte elegido al crear la reunión.
   final TransitMode? transitMode;
   final int? budgetPerPerson;
   final List<String> inviteeNames;
@@ -91,9 +88,6 @@ class MeetingRecord {
   ///  - pending_votes: el organizador ya votó y faltan invitados por votar.
   ///  - scheduled: lugar definido (votación cerrada o reunión sin invitados).
   final String status;
-  // createdAtClient: hora del dispositivo al crear (BQ tipo 4 la usa como
-  // momento en que se organizó). updatedAtClient: versión para resolver
-  // conflictos; en Firestore se llama clientUpdatedAt.
   final int createdAtClient;
   final int updatedAtClient;
 
@@ -102,8 +96,6 @@ class MeetingRecord {
   static const String scheduled = 'scheduled';
   static const String canceled = 'canceled';
 
-  // Debe coincidir con inLocationWindow de firestore.rules: la app decide si
-  // comparte y las reglas lo vuelven a validar en el servidor.
   /// Live location is shared only around the meeting time: from
   /// [locationWindowBefore] before [scheduledAt] until [locationWindowAfter]
   /// after it. The same window is enforced in firestore.rules.
@@ -221,12 +213,6 @@ class MeetingRecord {
         now.isBefore(at.add(locationWindowAfter));
   }
 
-  // Nombres de campos guardados (local y Firestore): id, organizerId, activity,
-  // dayLabel, timeLabel, scheduledAt, transitMode, budgetPerPerson,
-  // inviteeNames, inviteesCount, invitees, inviteeEmails, meetingPoint {lat,
-  // lng}, placeName, placeCategory, candidates, status, createdAtClient,
-  // clientUpdatedAt. SyncService agrega updatedAt y createdAt con la hora del
-  // servidor.
   /// Local JSON (and outbox payload). Dates as epoch millis.
   Map<String, dynamic> toJson() => {
         'id': id,

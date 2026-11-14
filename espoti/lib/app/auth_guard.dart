@@ -22,8 +22,6 @@ class AuthGuard extends StatefulWidget {
 class _AuthGuardState extends State<AuthGuard> {
   bool _redirecting = false;
 
-  // _redirecting evita navegar varias veces si build se ejecuta varias veces.
-  // addPostFrameCallback: no se puede navegar en medio de un build.
   void _redirect() {
     if (_redirecting) return;
     _redirecting = true;
@@ -37,10 +35,6 @@ class _AuthGuardState extends State<AuthGuard> {
   @override
   Widget build(BuildContext context) {
     final auth = AuthService();
-    // Observer con Stream: StreamBuilder se suscribe a authStateChanges de
-    // FirebaseAuth. initialData evita un frame de carga si ya hay usuario.
-    // Cuando el stream emite null (signOut o token revocado) se redirige y se
-    // limpia la pila.
     return StreamBuilder<User?>(
       stream: auth.authStateChanges,
       initialData: auth.currentUser,

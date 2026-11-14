@@ -22,22 +22,6 @@ enum LocationSyncStatus {
   error,
 }
 
-// VV2 – Ubicación según movimiento (resumen):
-//  - moving: GPS cada 15 s con precisión alta (timeout 10 s).
-//  - stationary: una última actualización y se detiene el temporizador.
-//  - unavailable (sin acelerómetro): latido de respaldo cada 2 min.
-//  - unknown: no hay lecturas periódicas hasta que el sensor decida.
-// Límites: solo con la reunión en su ventana (2 h antes a 4 h después), solo en
-// primer plano (pause/resume desde ActiveMeetingLocationSync), mínimo 5 s entre
-// envíos y no se reenvía si se movió menos de minDistanceMeters.
-// Sincronización: escribe directo en Firestore (no pasa por el outbox). Sin
-// conexión el set() no se confirma y vence el timeout (estado error); el SDK de
-// Firestore puede conservar esa escritura en su caché y enviarla después, pero
-// la app no lo controla.
-// Privacidad: un documento por usuario y reunión, sobrescrito con la última
-// posición; solo participantes lo leen (reglas); al cerrar sesión se borra la
-// última posición local. El documento en Firestore no se borra al terminar la
-// reunión (las reglas lo permiten, pero la app no lo hace).
 /// Accelerometer -> GPS -> Firestore.
 ///
 /// Only for eligible meetings: not canceled and inside the location window
@@ -104,8 +88,6 @@ class LocationSharingService {
     _meetingId = meeting.id;
     _meeting = meeting;
     final endsAt = meeting.scheduledAt!.add(MeetingRecord.locationWindowAfter);
-    // Temporizador que apaga todo al terminar la ventana, aunque la pantalla
-    // siga abierta.
     _windowEndTimer = Timer(endsAt.difference(now), _onWindowEnded);
     // Motion is unknown until the accelerometer has enough samples.
     statusNotifier.value = LocationSyncStatus.detecting;
@@ -156,8 +138,6 @@ class LocationSharingService {
     statusNotifier.value = LocationSyncStatus.outsideWindow;
   }
 
-  // Limpieza de tareas: quita el listener, libera el acelerómetro, cancela los
-  // dos temporizadores y reinicia el estado.
   /// Call when the user leaves the meeting: stops sensor, GPS and timers.
   void stopForMeeting() {
     _activity.stateNotifier.removeListener(_onMotionChanged);
@@ -222,8 +202,6 @@ class LocationSharingService {
     _timer = Timer.periodic(interval, (_) => _updateLocation());
   }
 
-  // _updating evita dos lecturas de GPS a la vez (el temporizador puede
-  // disparar mientras la anterior aún espera al GPS).
   /// Gets the GPS position and writes it to Firestore. [force] skips the
   /// "same position" check (the minimum gap still applies).
   Future<void> _updateLocation({bool force = false}) async {
@@ -305,10 +283,6 @@ class LocationSharingService {
     if (_meetingId != null) statusNotifier.value = status;
   }
 
-  // Permiso de ubicación "mientras se usa la app" (ACCESS_FINE/COARSE_LOCATION
-  // en Android, NSLocationWhenInUseUsageDescription en iOS). Se pide una sola
-  // vez por visita a la reunión; no hay permiso ni seguimiento en segundo
-  // plano.
   /// Checks GPS service + permission (asks once per meeting visit).
   Future<bool> _ensureLocationAccess() async {
     if (!await Geolocator.isLocationServiceEnabled()) {

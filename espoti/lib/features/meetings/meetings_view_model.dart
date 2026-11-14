@@ -87,11 +87,6 @@ class MeetingsViewModel extends ChangeNotifier {
 
   bool isPending(String meetingId) => _repository.isPending(meetingId);
 
-  // Observer (lado del modelo): el ViewModel se registra como oyente de
-  // MeetingRepository.changes (ValueNotifier<int>) y de
-  // MeetingVotingService.overview. Cuando el repositorio guarda, sincroniza o
-  // detecta un conflicto incrementa changes → _onRepositoryChange → load() →
-  // notifyListeners.
   /// Starts observing the repository and loads. Safe to call more than once.
   void start() {
     if (_started) return;
@@ -105,10 +100,6 @@ class MeetingsViewModel extends ChangeNotifier {
     voting.refresh();
   }
 
-  // Recorrido MVVM de una acción: el usuario toca una pestaña en MeetingsPage →
-  // la vista llama selectStatus → cambia _selectedStatus → _notify() →
-  // notifyListeners() → ListenableBuilder de la vista se reconstruye y lee
-  // visibleMeetings.
   void selectStatus(MeetingStatus status) {
     if (status == _selectedStatus) return;
     _selectedStatus = status;
@@ -127,10 +118,6 @@ class MeetingsViewModel extends ChangeNotifier {
     _notify();
   }
 
-  // Carga: pide myMeetings al repositorio (memoria → copia local → Firestore).
-  // stale = true cuando se muestran datos locales porque el servidor no
-  // respondió; la vista muestra el aviso "may be outdated". El error queda en
-  // _error.
   Future<void> load({bool force = false}) async {
     try {
       final result = await _repository.myMeetings(forceRefresh: force);
@@ -147,14 +134,10 @@ class MeetingsViewModel extends ChangeNotifier {
 
   void _onRepositoryChange() => load();
 
-  // _disposed evita notificar después de dispose (una carga async puede
-  // terminar cuando la pantalla ya se cerró).
   void _notify() {
     if (!_disposed) notifyListeners();
   }
 
-  // Se quitan los listeners de los singletons; si no, seguirían apuntando a un
-  // ViewModel ya destruido (fuga de memoria y notificaciones a la nada).
   @override
   void dispose() {
     _disposed = true;

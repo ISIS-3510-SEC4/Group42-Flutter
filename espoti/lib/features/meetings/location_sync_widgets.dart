@@ -38,8 +38,6 @@ class _ActiveMeetingLocationSyncState extends State<ActiveMeetingLocationSync>
     LocationSharingService().startForMeeting(widget.meeting);
   }
 
-  // Solo primer plano: al ir a segundo plano se apagan sensor y GPS (pause) y
-  // al volver se reanudan (resume).
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
@@ -57,7 +55,6 @@ class _ActiveMeetingLocationSyncState extends State<ActiveMeetingLocationSync>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Al salir del detalle de la reunión se detiene todo.
     LocationSharingService().stopForMeeting();
     super.dispose();
   }
@@ -66,8 +63,6 @@ class _ActiveMeetingLocationSyncState extends State<ActiveMeetingLocationSync>
   Widget build(BuildContext context) => widget.child;
 }
 
-// Nota: este widget solo lo usan las pruebas; en pantalla se usa
-// MotionLiveCard.
 /// Real accelerometer state, as detected by [ActivityContextService].
 /// `unknown` is shown as "detecting", never as stationary.
 class MotionStatusIndicator extends StatelessWidget {

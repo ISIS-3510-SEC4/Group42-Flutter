@@ -71,8 +71,6 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
       _error = null;
     });
     try {
-      // Se cargan al abrir; si falla (sin Google, permiso negado, red) se
-      // muestra el mensaje de ContactsException y se puede reintentar.
       final contacts = await _service.fetchContacts();
       if (!mounted) return;
       setState(() {
@@ -104,8 +102,6 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    // Filtrado en memoria por nombre, correo o teléfono: no hace nuevas
-    // llamadas.
     final visible = _contacts.where((c) {
       final q = _query.toLowerCase();
       return q.isEmpty ||

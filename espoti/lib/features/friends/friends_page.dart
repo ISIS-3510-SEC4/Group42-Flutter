@@ -133,8 +133,6 @@ class _FriendsPageState extends State<FriendsPage> {
   Future<void> _importFromContacts() async {
     if (_importing) return;
     // Los contactos se leen con la sesión de Google (scope de solo lectura).
-    // Si se entró con correo, o la app se reinició, googleAccount es null y hay
-    // que volver a entrar con Google para leer contactos.
     if (AuthService().googleAccount == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text(

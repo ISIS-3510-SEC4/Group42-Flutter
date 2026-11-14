@@ -25,13 +25,6 @@ class MeetingsResult {
   const MeetingsResult(this.meetings, {this.fromCache = false, this.stale = false});
 }
 
-// VV3 – Firebase, consistencia y caché de reuniones.
-// Lectura en 3 niveles: 1) memoria (TimedCache, TTL 5 min); 2) copia local en
-// SQLite + espejo en SharedPreferences, con su fetchedAt; 3) Firestore con
-// Source.server. Escritura: copia local inmediata + outbox (SyncService).
-// Consistencia: en _merge gana el servidor, salvo reuniones con cambios aún en
-// el outbox. Conflictos: checkConflict compara clientUpdatedAt (última edición
-// por reloj del dispositivo).
 /// Meetings stored in Firestore `meetings/{meetingId}`, offline-first.
 ///
 /// Reads: memory cache (TTL 5 min) -> local snapshot (TTL 5 min) -> Firestore.
@@ -58,9 +51,6 @@ class MeetingRepository {
 
   String? get _uid => FirebaseAuth.instance.currentUser?.uid;
 
-  // Observer: escucha los streams synced y conflicts de SyncService y
-  // authStateChanges. Viven lo que vive el singleton; ??= evita suscribirse dos
-  // veces.
   void _listenToSync() {
     // Logout: forget the in-memory copy of the previous user's meetings.
     _authSub ??= FirebaseAuth.instance.authStateChanges().listen((user) {
@@ -87,15 +77,11 @@ class MeetingRepository {
     if (uid == null) return const MeetingsResult([]);
     _listenToSync();
 
-    // Nivel 1: memoria. Un acierto no lee disco ni red.
     if (!forceRefresh) {
       final hit = _cache.get(uid);
       if (hit != null) return MeetingsResult(_sorted(hit), fromCache: true);
     }
 
-    // Nivel 2: copia local. Si es reciente (≤ 5 min) tampoco se consulta
-    // Firestore:
-    // así se reducen las lecturas al navegar entre pantallas.
     final snapshot = await _loadSnapshot(uid);
     final snapshotFresh = snapshot.fetchedAt != null &&
         DateTime.now().difference(snapshot.fetchedAt!) <= ttl;
@@ -104,9 +90,6 @@ class MeetingRepository {
       return MeetingsResult(_sorted(snapshot.records), fromCache: true);
     }
 
-    // Nivel 3: Firestore. Sin red se lanza _Offline y el catch devuelve los
-    // datos locales marcados como stale (la vista avisa que pueden estar
-    // desactualizados).
     final local = _cache.peek(uid) ?? snapshot.records;
     try {
       if (!await ConnectivityService.instance.check()) {
@@ -141,8 +124,6 @@ class MeetingRepository {
   Future<MeetingRecord> save(MeetingRecord record) async {
     final uid = _uid;
     if (uid == null) throw StateError('You must log in to save meetings.');
-    // Solo el organizador escribe la reunión; las reglas exigen lo mismo
-    // (organizerId == request.auth.uid).
     if (record.organizerId != uid) {
       throw StateError('Only the organizer can edit this meeting.');
     }
@@ -162,9 +143,6 @@ class MeetingRepository {
     }
     await _saveSnapshot(uid, records, snapshot.fetchedAt);
 
-    // upsert con checkConflict: si Firestore ya tiene una versión con
-    // clientUpdatedAt mayor, este cambio se descarta y se notifica como
-    // conflicto.
     await SyncService.instance.enqueue(PendingOperation.create(
       kind: PendingWriteKind.upsert,
       collection: collection,
@@ -183,8 +161,6 @@ class MeetingRepository {
 
   // ---------------------------------------------------------------------------
 
-  // scheduledAt se envía como {'__ts': ms} para que SyncService lo guarde como
-  // Timestamp; las reglas de ubicación (inLocationWindow) lo comparan como tal.
   Map<String, dynamic> _toSyncData(MeetingRecord r) {
     final json = r.toJson();
     json['scheduledAt'] =
@@ -194,10 +170,6 @@ class MeetingRepository {
 
   Future<Map<String, MeetingRecord>> _fetchRemote(String uid) async {
     // Single-field filter: no composite index is required. Sorting is local.
-    // Solo reuniones donde organizerId == uid (coincide con la regla allow
-    // list). Las reuniones donde el usuario es invitado se leen en
-    // MeetingVotingService (inviteeEmails array-contains). Los Timestamp se
-    // pasan a epoch ms.
     final query = await FirebaseFirestore.instance
         .collection(collection)
         .where('organizerId', isEqualTo: uid)

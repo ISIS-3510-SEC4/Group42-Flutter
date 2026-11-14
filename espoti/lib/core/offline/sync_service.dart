@@ -57,30 +57,12 @@ class SyncStatus {
 //
 // La sincronización se activa al iniciar la aplicación, registrar cambios,
 // iniciar sesión, recuperar la conexión, volver a primer plano o solicitarla manualmente.
-// VV3 – Offline-first (resumen para la sustentación):
-//  - Sin pérdida de datos: cada cambio se guarda en disco (outbox en SQLite +
-//    espejo en SharedPreferences) antes de intentar subirlo; sobrevive a cerrar
-//    la app.
-//  - Sin duplicados: los ids de documento se generan en el dispositivo (uuid o
-//    ids deterministas) y coalesce fusiona operaciones del mismo documento;
-//    createOnce nunca crea dos veces el mismo documento.
-//  - Conflictos: con checkConflict gana la versión con clientUpdatedAt mayor
-//    (último en escribir según el reloj del dispositivo). No se fusiona campo
-//    por campo: la versión perdedora se descarta y se notifica por conflicts.
-//  - Reconexión: se reintenta al recuperar la red, al volver a primer plano, al
-//    iniciar sesión y cada 30 s mientras haya pendientes.
-// Esto es distinto de la caché de Firestore: aquí la app controla su propia
-// cola; la caché del SDK no se configura en el proyecto (no hay Settings de
-// persistencia) y las lecturas importantes usan Source.server.
 class SyncService with WidgetsBindingObserver {
   SyncService._();
   static final SyncService instance = SyncService._();
 
   static const Duration _retryEvery = Duration(seconds: 30);
   static const Duration _writeTimeout = Duration(seconds: 15);
-  // Tras 5 fallos, o con un error permanente (permission-denied,
-  // invalid-argument, not-found), la operación pasa a _failed (dead letter) y
-  // solo vuelve a la cola con retryFailed (botón del SyncStatusBanner).
   static const int _maxAttempts = 5;
 
   // Notifica a la interfaz los cambios en el estado de sincronización.
@@ -233,9 +215,6 @@ class SyncService with WidgetsBindingObserver {
 
   // Ejecuta la sincronización evitando procesos simultáneos.
   // Si llega otra solicitud durante una ejecución, programa una ejecución adicional.
-  // Concurrencia: _running hace que solo exista una sincronización a la vez;
-  // las llamadas que llegan mientras tanto reciben el mismo Future y activan
-  // _rerun.
   Future<void> syncNow() {
     if (_running != null) {
       _rerun = true;
@@ -359,8 +338,6 @@ class SyncService with WidgetsBindingObserver {
 
   // Ejecuta la escritura dentro de una transacción para evitar inconsistencias.
   // Devuelve true cuando la operación pierde un conflicto de versiones.
-  // Las transacciones de Firestore necesitan conexión con el servidor: por eso
-  // esta cola propia es la que permite trabajar sin red, no la transacción.
   Future<bool> _write(PendingOperation op) {
     final ref = _db.collection(op.collection).doc(op.docId);
 

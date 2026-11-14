@@ -8,17 +8,6 @@ import '../services/place_search_service.dart';
 import 'app_database.dart';
 import 'pending_operation.dart';
 
-// VV3 – Almacenamiento local. Dependencias declaradas en pubspec y usadas:
-// sqflite (+ sqflite_common_ffi_web en web), shared_preferences y hive_ce
-// (este último solo en ZonePlacesStore).
-// Qué sigue ahí al cerrar y abrir la app (por uid cuando es del usuario):
-//  - perfil y su fetchedAt (almacenamiento de usuario + caché con TTL)
-//  - reuniones del organizador y su fetchedAt (caché / copia offline)
-//  - outbox y operaciones fallidas (cola de sincronización)
-//  - intento de planificación abierto (VV2), invitaciones cacheadas
-//  - lugares recientes de búsqueda y última posición GPS
-// Estrategia: SQLite principal + espejo JSON en SharedPreferences como respaldo
-// si SQLite falla.
 /// Layer for local persistence and offline-first storage (Sprint 3 - Feature 1).
 ///
 /// Combines SQLite structured tables via [AppDatabase] with fallback and KV support
@@ -225,8 +214,6 @@ class LocalStore {
   // DOMAIN STORAGE: PENDING TRANSACTIONS (SYNC OUTBOX)
   // ===========================================================================
 
-  // Detalle: el espejo en SharedPreferences se escribe dentro del mismo try que
-  // SQLite; si SQLite lanza un error, el espejo tampoco se actualiza.
   Future<void> savePendingOperations(List<PendingOperation> ops, {bool isDeadLetter = false}) async {
     try {
       final key = isDeadLetter ? deadLetterKey : outboxKey;
@@ -238,7 +225,6 @@ class LocalStore {
     }
   }
 
-  // Si SQLite devuelve una lista vacía (o falla) se lee el espejo JSON.
   Future<List<PendingOperation>> getPendingOperations({bool deadLetterOnly = false}) async {
     try {
       final fromDb = await _db.getPendingTransactions(deadLetterOnly: deadLetterOnly);
@@ -268,7 +254,6 @@ class LocalStore {
   // GENERIC KEY-VALUE PERSISTENCE (SQLite + SharedPreferences Mirror)
   // ===========================================================================
 
-  // Los JSON grandes (> 16 KB) se decodifican en otro isolate (JsonIsolate).
   /// Reads a JSON object by key, querying SQLite KV store with SharedPreferences fallback.
   Future<Object?> readJson(String key) async {
     try {
@@ -343,7 +328,6 @@ class LocalStore {
     } catch (_) {}
   }
 
-  // Privacidad: AuthService.signOut la borra para que otra cuenta no la vea.
   /// Removes the last known position (called on sign-out).
   Future<void> clearLastLocation() async {
     try {

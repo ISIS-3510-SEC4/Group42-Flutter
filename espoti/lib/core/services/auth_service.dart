@@ -5,17 +5,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'location_sharing_service.dart';
 import 'meeting_voting_service.dart';
 
-// Autenticación de Espoti (singleton).
-//
-// Diferencia clave para la sustentación:
-//  - Firebase Authentication administra la sesión de la app: el uid (Firebase
-//    UID), la persistencia de la sesión y authStateChanges. Ese uid es el que
-//    se usa como id de users/{uid}, organizerId de las reuniones y userId de
-//    los eventos de analítica.
-//  - Google Sign-In es solo un proveedor de identidad: entrega un idToken de
-//    Google que se cambia por una credencial de Firebase
-//    (GoogleAuthProvider.credential). La cuenta de Google también se usa para
-//    pedir el permiso de contactos (ContactsService).
 class AuthService {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
@@ -31,15 +20,8 @@ class AuthService {
 
   /// Whether a user is currently logged in.
   bool get isAuthenticated => _auth.currentUser != null;
-  // Cuenta de Google en memoria: solo existe si el usuario entró con Google en
-  // esta ejecución de la app. Si la app se reinicia, Firebase restaura la
-  // sesión pero esto queda en null (no se llama a
-  // attemptLightweightAuthentication), y Google Contacts pide volver a entrar
-  // con Google. Tampoco existe para quien entró con correo y contraseña.
   GoogleSignInAccount? get googleAccount => _googleAccount;
 
-  // Correo y contraseña: autenticación 100 % de Firebase. El error de Firebase
-  // se traduce a un texto legible y se lanza como String; la vista lo muestra.
   /// Sign in with email and password.
   Future<UserCredential> signInWithEmailAndPassword({
     required String email,
@@ -72,8 +54,6 @@ class AuthService {
     }
   }
 
-  // GoogleSignIn (v7) se inicializa una sola vez; si falla se permite
-  // reintentar.
   Future<void>? _googleInit;
   GoogleSignInAccount? _googleAccount;
 
@@ -102,10 +82,6 @@ class AuthService {
       if (!google.supportsAuthenticate()) {
         throw 'Google Sign-In is not available on this platform.';
       }
-      // Flujo con Google: 1) Google muestra su selector y autentica la cuenta;
-      // 2) se toma el idToken; 3) Firebase valida ese token e inicia (o crea)
-      //    la sesión de Firebase. El uid resultante es el de Firebase, no un id
-      //    de Google.
       final account = await google.authenticate();
       _googleAccount = account;
       final idToken = account.authentication.idToken;
@@ -116,8 +92,6 @@ class AuthService {
         GoogleAuthProvider.credential(idToken: idToken),
       );
     } on GoogleSignInException catch (e) {
-      // Cancelar el selector no es un error: se devuelve null y la vista sigue
-      // en login.
       if (e.code == GoogleSignInExceptionCode.canceled) return null;
       debugPrint('Google sign-in error: ${e.code} ${e.description}');
       throw 'Could not sign in with Google. Check your connection and the app configuration.';
@@ -131,12 +105,6 @@ class AuthService {
   /// next account on the phone never sees it.
   Future<void> signOut() async {
     try {
-      // Orden del cierre de sesión: primero se limpia lo que pertenece al
-      // usuario (ubicación compartida y última posición GPS local, votaciones
-      // en memoria), luego Google y al final Firebase. Cuando _auth.signOut()
-      // termina, authStateChanges emite null y AuthGuard saca al usuario de las
-      // vistas protegidas. El perfil local se borra aparte (ProfilePage →
-      // clearUser).
       await LocationSharingService().clearOnSignOut();
     } catch (e) {
       debugPrint('Local location not cleared: $e');

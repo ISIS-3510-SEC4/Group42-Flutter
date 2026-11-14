@@ -87,8 +87,6 @@ class ActivityContextService {
   bool get isSupported => state != MotionState.unavailable;
 
   StreamSubscription<AccelerometerEvent>? _subscription;
-  // Dueños del sensor (pantalla Motion sensor y LocationSharingService): el
-  // stream solo se cancela cuando ya no queda ninguno.
   final Set<Object> _owners = {};
   final List<double> _window = [];
   double? _lastWindowMean;
@@ -101,10 +99,6 @@ class ActivityContextService {
     if (_subscription != null || state == MotionState.unavailable) return;
     _reset();
     try {
-      // Disponibilidad: si la plataforma no tiene sensor (web, algunos
-      // emuladores) el stream falla en onError o lanza al crearse; en ambos
-      // casos el estado pasa a unavailable y no se generan lecturas simuladas.
-      // cancelOnError corta el stream al primer error.
       _subscription = accelerometerEventStream(
         samplingPeriod: SensorInterval.normalInterval,
       ).listen(
@@ -150,8 +144,6 @@ class ActivityContextService {
     stateNotifier.value = MotionState.unavailable;
   }
 
-  // Se ejecuta por cada muestra (~5 por segundo). El cálculo es barato (raíz
-  // cuadrada y un promedio), no justifica un isolate.
   void _onEvent(AccelerometerEvent e) {
     final magnitude = math.sqrt(e.x * e.x + e.y * e.y + e.z * e.z);
     final deviation = (magnitude - gravity).abs();

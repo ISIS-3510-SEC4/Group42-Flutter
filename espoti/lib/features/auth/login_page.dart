@@ -36,9 +36,6 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  // Vista protegida por conectividad: iniciar sesión (correo o Google) y
-  // recuperar la contraseña necesitan red; sin conexión se avisa antes de
-  // llamar a Firebase.
   /// Login is a protected view: Firebase Auth needs the network.
   Future<bool> _ensureOnline() async {
     if (await ConnectivityService.instance.check()) return true;
@@ -97,8 +94,6 @@ class _LoginPageState extends State<LoginPage> {
     if (_emailError != null || _passwordError != null) return;
     if (!await _ensureOnline()) return;
 
-    // Estado de carga: _isLoading muestra el indicador y, junto con el
-    // `if (_isLoading) return;` del inicio, evita envíos dobles.
     setState(() => _isLoading = true);
 
     try {
@@ -106,9 +101,6 @@ class _LoginPageState extends State<LoginPage> {
         email: email,
         password: _passwordController.text,
       );
-      // Tras autenticar se carga el perfil y se encola la
-      // creación/actualización de users/{uid}; la escritura real en Firestore
-      // la hace SyncService.
       await UserService().init();
 
       if (mounted) {// Mounted confirma que el widget esta activo
@@ -135,7 +127,6 @@ class _LoginPageState extends State<LoginPage> {
     if (!await _ensureOnline()) return;
     setState(() => _isLoading = true);
     try {
-      // Google: credential null significa que el usuario canceló; no se navega.
       final credential = await _authService.signInWithGoogle();
       if (credential == null) return; // user cancelled: stay on login
       await UserService().init();

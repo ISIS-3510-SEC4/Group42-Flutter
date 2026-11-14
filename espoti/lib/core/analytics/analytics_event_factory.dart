@@ -2,9 +2,6 @@ import 'package:uuid/uuid.dart';
 
 import '../../models/analytics_event.dart';
 
-// Patrón Factory Method: todos los eventos se crean aquí con el mismo
-// sessionId. El reloj (clock) y el generador de ids son inyectables para las
-// pruebas.
 /// Factory Method: single place that builds every [AnalyticsEvent].
 class AnalyticsEventFactory {
   AnalyticsEventFactory({
@@ -98,8 +95,6 @@ class AnalyticsEventFactory {
         metadata: {'fallbacks': fallbacks},
       );
 
-  // BQ tipo 4 (VV3): id meeting_created_<meetingId> → un único evento por
-  // reunión.
   /// Business question type 4. One event per meeting: the id is derived from
   /// the meeting id, so retries and edits never create a second event.
   AnalyticsEvent meetingCreated(
@@ -115,8 +110,6 @@ class AnalyticsEventFactory {
         id: 'meeting_created_$meetingId',
       );
 
-  // VV2: metadata.attemptId es la clave con la que planning_abandonment.js
-  // agrupa los eventos por intento.
   /// Business question (VV2): planning funnel events. Every event carries the
   /// planning attempt id in `metadata.attemptId` so one attempt can be
   /// followed from its first step to its end (completed or abandoned).

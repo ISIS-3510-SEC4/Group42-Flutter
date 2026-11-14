@@ -27,9 +27,6 @@ class _MotionSensorPageState extends State<MotionSensorPage> {
   @override
   void initState() {
     super.initState();
-    // La interfaz sí demuestra el uso real del sensor: MotionLiveCard escucha
-    // stateNotifier y readingNotifier y muestra en vivo x, y, z, la desviación
-    // y el estado. Sin sensor muestra "not available" (sin datos simulados).
     ActivityContextService().start(owner: _owner);
   }
 

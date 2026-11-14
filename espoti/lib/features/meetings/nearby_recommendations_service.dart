@@ -28,7 +28,6 @@ class NearbyRecommendationsService {
   final ZonePlacesStore _store;
 
   // Rounded to ~110 m so taps on the same block reuse the same result.
-  // Clave de caché: coordenadas redondeadas a 3 decimales (~110 m) + radio.
   static String _zoneKey(LatLng location, int radiusMeters) =>
       '${location.latitude.toStringAsFixed(3)},'
       '${location.longitude.toStringAsFixed(3)},$radiusMeters';
@@ -38,9 +37,6 @@ class NearbyRecommendationsService {
     LatLng location, {
     int radiusMeters = 1500,
   }) async {
-    // Caché: primero LRU en memoria; si no está, consulta Overpass. Después se
-    // guarda en Hive (disco), pero eso no evita consultas: solo se usa como
-    // respaldo cuando Overpass falla (storedCandidates).
     final key = _zoneKey(location, radiusMeters);
     final cached = _cache.get(key);
     if (cached != null) return cached;
@@ -72,8 +68,6 @@ out center tags;
     // An Overpass answer can be hundreds of KB: decoding it on another
     // isolate keeps the UI smooth. The web has no isolates, so it runs inline.
     final json = response.body;
-    // Isolate.run: parsear una respuesta grande es trabajo de CPU y se hace
-    // fuera del hilo de la interfaz (es el caso que sí justifica un isolate).
     final candidates = kIsWeb
         ? _parseCandidates(json)
         : await Isolate.run(() => _parseCandidates(json));

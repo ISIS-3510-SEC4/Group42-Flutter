@@ -5,8 +5,6 @@ import '../offline/pending_operation.dart';
 import '../offline/sync_service.dart';
 import 'analytics_event_factory.dart';
 
-// Ventanas horarias del dashboard. night cruza la medianoche (22 a 5), por eso
-// of() la devuelve cuando ninguna otra coincide.
 /// Time windows used to group meetings (local device time).
 enum MeetingTimeWindow {
   earlyMorning('EARLY_MORNING', 5, 8),
@@ -35,9 +33,6 @@ const _weekdayNames = [
   'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY',
 ];
 
-// BQ tipo 4 (VV3), recorrido: CreateMeetingPage._saveMeeting → (solo reuniones
-// nuevas) meetingCreated → outbox → analytics_events/meeting_created_<id> →
-// script meeting_peak_windows.js → analytics_results → MeetingPeakWindowsPage.
 /// Business question (type 4):
 /// "What are the peak days and time windows during which groups organize
 /// meetings, broken down by transit mode?"
@@ -54,12 +49,6 @@ class MeetingCreationTracker {
   static final String _sessionId = const Uuid().v4();
   final AnalyticsEventFactory _factory;
 
-  // Campos de metadata: transitMode (wireName), createdDayOfWeek / createdHour
-  // / createdTimeWindow (cuándo se organizó), scheduledDayOfWeek /
-  // scheduledHour / scheduledTimeWindow (cuándo será), groupSize y
-  // timezoneOffsetMinutes. Privacidad: no se guardan coordenadas ni
-  // direcciones. 'UNSPECIFIED' solo aparecería si faltara el medio de
-  // transporte; el formulario lo exige.
   /// Pure: metadata for [meeting] created at [createdAt]. Exposed for tests.
   static Map<String, Object?> buildMetadata(
       MeetingRecord meeting, DateTime createdAt) {
@@ -81,10 +70,6 @@ class MeetingCreationTracker {
     };
   }
 
-  // La hora del evento es createdAtClient (hora del dispositivo al crear), no
-  // la de sincronización: una reunión creada sin conexión cuenta en su día y
-  // hora reales. Asociación: userId = organizerId y meetingId = id de la
-  // reunión.
   /// Queues the event for [meeting]. Safe to call more than once.
   Future<void> meetingCreated(MeetingRecord meeting) async {
     final createdAt =

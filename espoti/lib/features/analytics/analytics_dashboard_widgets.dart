@@ -2,70 +2,28 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
-import '../../core/widgets/espoti_top_bar.dart';
-import 'analytics_result_view_model.dart';
 
-/// Scaffold shared by the analytics dashboards (BQ abandono and BQ tipo 4):
-/// it observes an [AnalyticsResultViewModel] and shows loading, a real empty
-/// state, an error state with retry, or [builder] with the aggregate.
-class AnalyticsDashboardScaffold extends StatelessWidget {
-  final String title;
-  final AnalyticsResultViewModel viewModel;
-  final String emptyMessage;
-  final Widget Function(BuildContext, Map<String, dynamic>) builder;
+/// Lectura segura de los resultados calculados por el agregador.
+class AnalyticsData {
+  AnalyticsData._();
 
-  const AnalyticsDashboardScaffold({
-    super.key,
-    required this.title,
-    required this.viewModel,
-    required this.emptyMessage,
-    required this.builder,
-  });
+  static int intOf(Object? value) => value is num ? value.toInt() : 0;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(AppDimensions.paddingL,
-                  AppDimensions.paddingM, AppDimensions.paddingL, AppDimensions.paddingS),
-              child: EspotiTopBar(
-                title: title,
-                trailing: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: AppColors.primaryBrown),
-                  tooltip: 'Back',
-                  onPressed: () => Navigator.maybePop(context),
-                ),
-              ),
-            ),
-            const Divider(height: 1, color: AppColors.mauve30),
-            Expanded(
-              child: ListenableBuilder(
-                listenable: viewModel,
-                builder: (context, _) => switch (viewModel.status) {
-                  AnalyticsResultStatus.loading => const Center(
-                      child: CircularProgressIndicator(color: AppColors.primaryBrown)),
-                  AnalyticsResultStatus.empty =>
-                    DashboardMessage(icon: Icons.inbox_outlined, message: emptyMessage),
-                  AnalyticsResultStatus.error => DashboardMessage(
-                      icon: Icons.error_outline,
-                      message: viewModel.error ?? 'Error',
-                      onRetry: viewModel.retry,
-                    ),
-                  AnalyticsResultStatus.ready => SingleChildScrollView(
-                      padding: const EdgeInsets.all(AppDimensions.paddingL),
-                      child: builder(context, viewModel.data!),
-                    ),
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  static double doubleOf(Object? value) =>
+      value is num ? value.toDouble() : 0.0;
+
+  static Map<String, dynamic> mapOf(Object? value) =>
+      value is Map ? Map<String, dynamic>.from(value) : const {};
+
+  /// Hora de actualización si el resultado la trae (DateTime o ms).
+  static String? updatedAtLabel(Map<String, dynamic> data) {
+    final value = data['updatedAt'];
+    final date = value is DateTime
+        ? value
+        : value is int
+            ? DateTime.fromMillisecondsSinceEpoch(value)
+            : null;
+    return date?.toLocal().toString().split('.').first;
   }
 }
 

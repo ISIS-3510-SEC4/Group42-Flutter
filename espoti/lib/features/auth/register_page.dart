@@ -167,9 +167,6 @@ class _RegisterPageState extends State<RegisterPage> {
         description: '',
       );
 
-      // El documento users/{uid} se crea a través del outbox (saveUser →
-      // SyncQueue.enqueueProfileUpdate), con el uid de Firebase recién creado
-      // como id.
       await UserService().saveUser(newUser);
 
       if (mounted) {

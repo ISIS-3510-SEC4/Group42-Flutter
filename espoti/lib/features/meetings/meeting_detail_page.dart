@@ -107,10 +107,6 @@ class _MeetingDetailPageState extends State<MeetingDetailPage> {
 
     // Share location (depending on movement) only for eligible meetings:
     // the user is a participant and the meeting is inside its time window.
-    // Elegibilidad para compartir ubicación: ser participante (organizador o
-    // invitado por correo) y estar dentro de la ventana de tiempo. Solo
-    // entonces se envuelve la pantalla en ActiveMeetingLocationSync, que
-    // enciende acelerómetro y GPS mientras esta vista esté abierta.
     if (meeting == null || !_sharesLocation(meeting)) return scaffold;
     return ActiveMeetingLocationSync(meeting: meeting, child: scaffold);
   }
@@ -132,9 +128,6 @@ class _MeetingDetailPageState extends State<MeetingDetailPage> {
         children: [
           const SyncStatusBanner(),
           Container(
-            // Marcador visual, no es un mapa real: las posiciones de los
-            // participantes no se dibujan aquí (solo se cuentan en
-            // LocationSyncStatusLine).
             height: 160,
             width: double.infinity,
             decoration: BoxDecoration(

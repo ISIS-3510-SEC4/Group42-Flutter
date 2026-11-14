@@ -22,9 +22,6 @@ class MeetingsPage extends StatefulWidget {
 
 class _MeetingsPageState extends State<MeetingsPage> {
   // MVVM: all screen state lives in the ViewModel; this State only owns it.
-  // La pantalla crea el ViewModel, lo arranca y lo destruye en dispose.
-  // Acciones del usuario que llegan al ViewModel: selectStatus (pestañas) y
-  // refresh (pull-to-refresh y botón de reintento).
   final MeetingsViewModel _viewModel = MeetingsViewModel()..start();
 
   @override
@@ -54,10 +51,6 @@ class _MeetingsPageState extends State<MeetingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Observer (lado de la vista): ListenableBuilder escucha al ViewModel
-    // (ChangeNotifier). Cada notifyListeners vuelve a ejecutar _buildScaffold,
-    // que solo lee getters (loading, error, stale, visibleMeetings). La vista
-    // nunca habla con Firestore ni con el repositorio.
     return ListenableBuilder(
       listenable: _viewModel,
       builder: (context, _) => _buildScaffold(context),

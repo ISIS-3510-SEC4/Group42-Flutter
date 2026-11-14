@@ -33,9 +33,6 @@ async function main() {
   const db = getFirestore();
   const platform = "FLUTTER";
 
-  // Consulta: todos los eventos PLANNING_* de la plataforma FLUTTER, de una vez
-  // (sin paginar). Se ejecuta en Node con firebase-admin, que ignora las
-  // reglas.
   const snapshot = await db.collection("analytics_events")
     .where("platform", "==", platform)
     .where("eventType", "in", TYPES)
@@ -44,9 +41,6 @@ async function main() {
   const attempts = new Map();
   let ignoredEvents = 0;
 
-  // Agrupación por intento (metadata.attemptId). Eventos sin attemptId o con un
-  // paso desconocido se cuentan como ignoredEvents. Si un intento tiene
-  // COMPLETED, ese resultado gana sobre un ABANDONED.
   for (const document of snapshot.docs) {
     const event = document.data();
     const attemptId = (event.metadata || {}).attemptId;
@@ -88,9 +82,6 @@ async function main() {
   let abandoned = 0;
   let openAttempts = 0;
 
-  // reached: un intento que llegó al paso N también alcanzó los anteriores.
-  // Intentos sin evento final (abiertos o aún sin sincronizar) no entran en las
-  // tasas; solo se reportan en openAttempts.
   for (const attempt of attempts.values()) {
     // Attempts without an end event are still in progress (or their end event
     // has not been synced yet): they are reported but not used in the rates.
@@ -113,9 +104,6 @@ async function main() {
     }
   }
 
-  // abandonRate de un paso = abandonados en ese paso / intentos que lo
-  // alcanzaron. El paso pico es el de mayor número absoluto de abandonos (no la
-  // mayor tasa).
   let peakStep = null;
   for (const step of STEPS) {
     const data = byStep[step];

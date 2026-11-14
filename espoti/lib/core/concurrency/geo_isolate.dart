@@ -3,9 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 
-// No se usa en las pantallas: computeCentroid y filterCandidatesWithinRadius no
-// se llaman desde lib/, y parseOsrmRoute solo lo llama RoutingService, que
-// ninguna pantalla usa. Solo las pruebas ejercitan este código.
 /// Multithreading / Concurrency engine for heavy GPS and routing calculations (Sprint 3 - Feature 3).
 ///
 /// Runs intensive geometric, distance, and routing algorithms in background Dart Isolates

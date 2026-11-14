@@ -16,13 +16,6 @@ class ContactsException implements Exception {
   String toString() => message;
 }
 
-// VV2 – Google Contacts: integración real con Google People API
-// (GET people/me/connections). Requisitos:
-//  1) haber entrado con Google en esta ejecución (AuthService.googleAccount);
-//  2) autorizar el scope contacts.readonly (diálogo de Google la primera vez);
-//  3) tener la People API habilitada en el proyecto de Google Cloud (eso no se
-//     puede comprobar desde el código; si falta, Google responde 403).
-// No se guarda ningún token: se pide en tiempo de ejecución.
 /// Reads the user's Google Contacts (read-only) through the People API.
 /// The access token comes from Google's authorization flow at runtime;
 /// no key or secret is stored in the app.
@@ -45,10 +38,6 @@ class ContactsService {
       }
 
       final authClient = account.authorizationClient;
-      // authorizationForScopes reutiliza un permiso ya concedido sin mostrar
-      // nada; si no existe, authorizeScopes muestra el consentimiento de
-      // Google. Este permiso OAuth de Google es independiente de la sesión de
-      // Firebase.
       var authorization = forceRefresh
           ? null
           : await authClient.authorizationForScopes([contactsScope]);
@@ -80,7 +69,6 @@ class ContactsService {
     String? pageToken;
     var retried = false;
 
-    // Paginación: hasta 5 páginas de 200, es decir, máximo 1000 contactos.
     for (var page = 0; page < 5; page++) {
       final uri = Uri.https('people.googleapis.com', '/v1/people/me/connections', {
         'personFields': 'names,emailAddresses,phoneNumbers,photos',
@@ -101,8 +89,6 @@ class ContactsService {
             'Connection error while loading your contacts.');
       }
 
-      // 401 = token vencido: se pide uno nuevo una sola vez y se repite la
-      // página.
       if (response.statusCode == 401 && !retried) {
         retried = true;
         token = await _accessToken(forceRefresh: true);

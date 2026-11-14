@@ -4,16 +4,9 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // Cada usuario accede unicamente a su documento
-    // Documento de usuario: el id es el uid de Firebase (users/{firebaseUid}).
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
-    // ATENCIÓN (consistencia y seguridad): esta regla de prueba permite leer y
-    // escribir CUALQUIER documento, incluso sin sesión, hasta el 24/12/2026. En
-    // Firestore basta con que una regla permita la operación, así que mientras
-    // exista anula todas las restricciones de abajo (organizador, invitados,
-    // ventana de ubicación, analytics). No se modificó; hay que quitarla para
-    // que las reglas de abajo protejan de verdad.
     match /{document=**} {
       allow read, write: if request.time < timestamp.date(2026, 12, 24);
     }
@@ -155,7 +148,10 @@ service cloud.firestore {
       // antes de crearlo (para no duplicar); solo el propio o uno que no existe.
       allow get: if signedIn()
         && (resource == null || resource.data.userId == request.auth.uid);
-      allow list, delete: if false;
+      // El tablero de analítica de la app lee los eventos de Flutter en
+      // tiempo real (la consulta filtra platform == 'FLUTTER').
+      allow list: if signedIn() && resource.data.platform == 'FLUTTER';
+      allow delete: if false;
     }
 
     // Directorio público de códigos de amigo: solo nombre, foto, código y
@@ -185,9 +181,6 @@ service cloud.firestore {
       allow write: if false;
     }
   }
-  // Este bloque está fuera de "match /databases/{database}/documents": su ruta
-  // no corresponde a ningún documento, así que no tiene efecto. Las reglas
-  // vigentes de analytics_events son las de arriba.
   match /analytics_events/{eventId} {
   allow create: if request.auth != null
     && request.resource.data.userId == request.auth.uid

@@ -17,9 +17,6 @@ const _weekdays = {
   'domingo': DateTime.sunday,
 };
 
-// BQ tipo 4: convierte dayLabel + timeLabel en scheduledAt. Con el selector de
-// fecha el día llega como yyyy-MM-dd; los nombres de días se aceptan por datos
-// antiguos. Si no se puede leer devuelve null y la validación lo rechaza.
 /// Turns the free-text day ("Sunday", "mañana") and time ("2:00 pm", "14:30")
 /// of the meeting form into the next matching moment, or null if unreadable.
 DateTime? parseMeetingDateTime(String day, String time, {DateTime? now}) {

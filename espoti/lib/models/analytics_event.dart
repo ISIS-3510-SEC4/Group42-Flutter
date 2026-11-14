@@ -19,11 +19,6 @@ enum AnalyticsEventType {
   final String wireName;
 }
 
-// Documento de analytics_events. platform = 'FLUTTER' separa estos eventos de
-// los de la app Kotlin (los scripts filtran por esa plataforma). El wireName
-// del tipo debe estar en la lista permitida de firestore.rules; si no,
-// Firestore responde permission-denied y la operación pasa a "fallidas" en el
-// outbox.
 /// Same shape as the Kotlin AnalyticsEvent so both apps write to one collection.
 class AnalyticsEvent {
   final String id;

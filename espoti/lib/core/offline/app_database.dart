@@ -12,9 +12,6 @@ import '../../models/user.dart';
 import '../services/place_search_service.dart';
 import 'pending_operation.dart';
 
-// Tablas: user_profiles, meetings, recent_places, pending_transactions (outbox)
-// y key_value_store. En web se usa SQLite en WebAssembly (ver main.dart). Si la
-// base no se puede abrir, _initFailed hace que LocalStore use su respaldo.
 /// Central SQLite Database management for Espoti (Sprint 3 - Feature 1).
 ///
 /// Provides structured persistence for:
@@ -156,7 +153,6 @@ class AppDatabase {
     await batch.commit(noResult: true);
   }
 
-  // Migraciones: agregan columnas sin borrar los datos existentes.
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     // v2: invitees with e-mail and invitation status (JSON list).
     if (oldVersion < 2) {
@@ -274,8 +270,6 @@ class AppDatabase {
   // MEETINGS
   // ===========================================================================
 
-  // Reemplaza la copia del organizador: borra las filas que ya no están en la
-  // lista y reescribe las demás (ConflictAlgorithm.replace), todo en un batch.
   Future<void> saveMeetings(String uid, List<MeetingRecord> meetings, {DateTime? fetchedAt}) async {
     final db = await database;
     if (db == null) return;
@@ -385,9 +379,6 @@ class AppDatabase {
         }
       }
 
-      // En esta tabla transitMode se guarda con el name del enum
-      // (publicTransit), no con el wireName de Firestore; se lee con el mismo
-      // criterio.
       TransitMode? mode;
       final modeStr = r['transitMode'] as String?;
       if (modeStr != null && modeStr.isNotEmpty) {

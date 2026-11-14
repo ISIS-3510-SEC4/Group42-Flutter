@@ -11,14 +11,6 @@ import '../offline/sync_service.dart';
 import '../offline/sync_queue.dart';
 import 'friend_code_service.dart';
 
-// Documento de usuario en Firestore: users/{firebaseUid}. El id del documento
-// es el uid de Firebase, por eso un usuario no puede tener dos documentos;
-// además se guarda el campo firebaseUid dentro del documento.
-//
-// Recorrido: init() → copia local (SQLite / SharedPreferences, ver LocalStore)
-// → _syncProfile() → outbox (SyncService) → Firestore.
-// Observer: userNotifier es un ValueNotifier; Home, Perfil y Amigos lo escuchan
-// (ValueListenableBuilder / addListener) y se redibujan cuando cambia.
 /// Profile of the signed-in user.
 ///
 /// Source of truth: Firestore `users/{firebaseUid}` (one document per Firebase
@@ -64,8 +56,6 @@ class UserService {
 
       // Después de sincronizar el perfil se publica el código de amigo en el
       // directorio público (user_codes) para que otros puedan buscarlo.
-      // force: si no había copia local (primer inicio en este dispositivo) se
-      // ignora el TTL de 30 min y se consulta Firestore.
       final remote = _syncProfile(firebaseUser, force: local == null)
           .then((_) => FriendCodeService.instance.publishMyCode());
       if (awaitRemote) {
@@ -85,12 +75,6 @@ class UserService {
 
       // Creates the document if missing (full profile) or only refreshes the
       // auth fields if it exists, so remote edits are never overwritten.
-      // Crear o actualizar users/{uid} con un upsert (merge):
-      //  - data: campos de autenticación (firebaseUid, email, authProviders,
-      //    lastLoginAt); se escriben en cada inicio de sesión.
-      //  - dataIfMissing: el perfil completo; solo se escribe si el documento
-      //    todavía no existe (ver SyncService._write). Así iniciar sesión nunca
-      //    sobrescribe ediciones del perfil hechas en otro dispositivo.
       await SyncService.instance.enqueue(PendingOperation.create(
         kind: PendingWriteKind.upsert,
         collection: collection,
@@ -106,9 +90,6 @@ class UserService {
 
   /// Updates the profile locally and queues it for Firestore.
   Future<void> saveUser(AppUser user) async {
-    // Actualización optimista: la interfaz cambia de inmediato; después se
-    // guarda local y se encola para Firestore con checkConflict (si el servidor
-    // tiene una versión más nueva, gana la del servidor).
     userNotifier.value = user;
     final firebaseUser = FirebaseAuth.instance.currentUser;
     final uid = firebaseUser?.uid ?? _uid;
@@ -162,24 +143,16 @@ class UserService {
     final fresh = fetchedAt != null &&
         DateTime.now().millisecondsSinceEpoch - fetchedAt <
             remoteTtl.inMilliseconds;
-    // Caché del perfil: fetchedAt se guarda en LocalStore; mientras no pasen 30
-    // min (remoteTtl) no se vuelve a leer Firestore.
     if (fresh && !force) return; // cache hit: no Firestore read
 
     if (!await ConnectivityService.instance.check()) return;
     try {
-      // Source.server: se pide al servidor (no a la caché de Firestore) con
-      // timeout de 6 s. Si falla, se queda la copia local y el error solo se
-      // registra.
       final doc = await FirebaseFirestore.instance
           .collection(collection)
           .doc(uid)
           .get(const GetOptions(source: Source.server))
           .timeout(const Duration(seconds: 6));
       final data = doc.data();
-      // Si el perfil tiene cambios aún en el outbox, no se reemplaza la copia
-      // local con la del servidor: se perderían los cambios hechos sin
-      // conexión.
       if (data != null && !SyncService.instance.hasPending(collection, uid)) {
         final remote = AppUser.fromJson(data);
         if (_uid == uid) userNotifier.value = remote;

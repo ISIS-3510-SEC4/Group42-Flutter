@@ -34,9 +34,6 @@ enum _PlacesSource { live, stored }
 /// Cuántos lugares recomendados pasan a la votación de los invitados.
 const _maxVoteCandidates = 5;
 
-// Paso 2 del embudo de VV2. Aquí también se ve la conectividad eventual:
-// lugares en vivo (LRU / Overpass) o, si falla, lugares guardados (SQLite /
-// Hive).
 /// "Create a meeting" (2): muestra los participantes que el usuario agregó y
 /// los lugares más cercanos al punto elegido; el organizador vota por uno.
 ///
@@ -82,11 +79,9 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   @override
   void initState() {
     super.initState();
-    // Inicio del paso 2 (PLANNING_STEP_STARTED).
     AnalyticsService().stepViewed(MeetingPlanningStep.vote);
     // When the network comes back, a list that came from saved places (or
     // that failed) reloads by itself with live data.
-    // Stream de connectivity_plus; la suscripción se cancela en dispose().
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen((results) {
       final online = results.any((r) => r != ConnectivityResult.none);
@@ -131,8 +126,6 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       // _recordLeaving.
       AnalyticsService().stepLeftBackwards(MeetingPlanningStep.vote);
     }
-    // Limpieza: se cancela el stream de conectividad y se cierran los clientes
-    // http.
     _connectivitySubscription?.cancel();
     _recommendationsService.close();
     _weatherService.close();
@@ -198,9 +191,6 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     });
     try {
       // Independent loads run at the same time instead of one after another.
-      // Concurrencia: el record de Futures con .wait pide lugares y clima en
-      // paralelo. Son operaciones de red (E/S), no bloquean el hilo de la
-      // interfaz.
       final ((candidates, source), forecast) = await (
         _loadCandidates(location),
         _loadForecast(location),
@@ -364,10 +354,6 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
           content: Text('Load the recommendations and choose a place first.')));
       return;
     }
-    // Aquí se completa todo el embudo de una vez: paso 2 completado, paso 3
-    // visto y PLANNING_FLOW_COMPLETED. Por eso el paso 3 nunca registra
-    // abandonos. Además ocurre antes de guardar la elección: si _saveChoice
-    // falla, el intento ya quedó como completado.
     _advanced = true;
     AnalyticsService()
       ..stepCompleted(MeetingPlanningStep.vote, meetingId: _meetingId)
@@ -388,8 +374,6 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     setState(() => _savingChoice = true);
     // Only participants write votes; the outbox queues them while offline
     // and the sync service uploads them when the network returns.
-    // Solo informa a la siguiente pantalla; la escritura usa el outbox igual
-    // con o sin conexión.
     final offline = (await Connectivity().checkConnectivity())
         .every((r) => r == ConnectivityResult.none);
     VoteItem? voting;

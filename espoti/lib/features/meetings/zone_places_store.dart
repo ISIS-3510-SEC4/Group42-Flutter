@@ -11,8 +11,6 @@ class StoredPlaces {
   final DateTime savedAt;
 }
 
-// Almacenamiento duradero clave/valor (Hive). No hay expiración: savedAt se
-// guarda pero ningún código lo usa para invalidar los datos.
 /// Places of each zone saved on disk with Hive (key/value, also works on the
 /// web). Unlike the in-memory LRU, they survive closing the app, so the vote
 /// screen can show real places when Overpass is unreachable.

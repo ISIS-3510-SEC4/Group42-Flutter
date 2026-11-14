@@ -11,15 +11,6 @@ import '../offline/local_store.dart';
 import '../offline/pending_operation.dart';
 import '../offline/sync_service.dart';
 
-// VV2 – Abandono al planear reuniones. El embudo tiene 3 pasos:
-//   1. details → formulario de CreateMeetingPage
-//   2. vote    → VoteMeetingPage (lugares recomendados y voto del organizador)
-//   3. result  → WinningPlacePage Importante: el paso 3 se marca como visto y
-//      completado en el mismo instante en que se vota en el paso 2
-//      (VoteMeetingPage._handleVote llama stepViewed(result) y
-//      planningCompleted seguidos) y WinningPlacePage no registra eventos. Con
-//      la implementación actual el paso 3 nunca puede tener abandonos: en la
-//      práctica se mide el abandono en los pasos 1 y 2.
 /// Steps of the meeting planning flow, in order.
 class MeetingPlanningStep {
   MeetingPlanningStep._();
@@ -43,8 +34,6 @@ class MeetingPlanningStep {
       };
 }
 
-// Motivo del abandono; se guarda en metadata.reason y el dashboard lo agrupa
-// en "How it was abandoned".
 /// Why a planning attempt ended without a meeting being completed.
 class PlanningAbandonReason {
   PlanningAbandonReason._();
@@ -63,13 +52,6 @@ class PlanningAbandonReason {
   static const String restarted = 'restarted';
 }
 
-// El intento es lo que relaciona todos los eventos de una planificación:
-//  - id (uuid) → metadata.attemptId en Firestore y attempt_id en GA4.
-//  - userId → uid de Firebase (null si no hay sesión).
-//  - maxStepIndex → paso más lejano alcanzado; el script lo usa para saber
-//    cuántos intentos "llegaron" a cada paso.
-// Mientras está abierto se guarda en disco (LocalStore) para poder detectar
-// que la app se cerró a mitad del proceso.
 /// One planning attempt: from opening "Create a meeting" until the meeting is
 /// completed (place chosen) or the attempt is abandoned. Persisted locally
 /// while open so an attempt interrupted by closing the app is still counted.
@@ -137,14 +119,6 @@ class PlanningAttempt {
   }
 }
 
-// Resumen en español: cada paso se envía a dos destinos.
-//  1) GA4 (FirebaseAnalytics.logEvent, nombres meeting_planning_*): visible en
-//     la consola de Firebase, pero la app no lee estos datos.
-//  2) Firestore analytics_events a través del outbox: es la fuente del
-//     dashboard propio (script planning_abandonment.js → analytics_results).
-// Identificadores que relacionan eventos: attemptId (intento), userId (uid de
-// Firebase), sessionId (uno por ejecución de la app) y meetingId (cuando la
-// reunión ya se guardó en el paso 1).
 /// Planning funnel analytics.
 ///
 /// Business question (VV2): "At which step do users most frequently abandon
@@ -171,8 +145,6 @@ class AnalyticsService {
   AnalyticsService._internal();
 
   static const String openAttemptKey = 'espoti_planning_open_attempt_v1';
-  // sessionId: se genera una vez por ejecución de la app (static final) y lo
-  // comparten todos los eventos de esa ejecución.
   static final String _sessionId = const Uuid().v4();
 
   final AnalyticsEventFactory _factory =
@@ -198,8 +170,6 @@ class AnalyticsService {
   // GA4
   // ---------------------------------------------------------------------------
 
-  // GA4: los errores solo se registran con debugPrint; la analítica nunca debe
-  // romper la interfaz.
   Future<void> _log(String name, Map<String, Object> params) async {
     final attemptId = _attempt?.id;
     try {
@@ -224,9 +194,6 @@ class AnalyticsService {
   // Funnel API used by the planning screens
   // ---------------------------------------------------------------------------
 
-  // Inicio de un intento. Si había otro abierto (por ejemplo, se abrió "crear"
-  // de nuevo sin terminar), ese se cierra como abandonado con reason =
-  // restarted, para que nunca haya dos intentos abiertos a la vez.
   /// Starts a new planning attempt. Call only when creating a new meeting
   /// (never in edit mode).
   void meetingPlanningStarted() {
@@ -254,9 +221,6 @@ class AnalyticsService {
     _persistOpen();
   }
 
-  // Evento de inicio de paso (PLANNING_STEP_STARTED). Puede haber varios por
-  // paso si el usuario va y vuelve. Actualiza currentStep y maxStepIndex,
-  // guarda la hora de entrada (para la duración) y persiste el intento.
   void stepViewed(String step, {Map<String, Object>? extra}) {
     _log('meeting_planning_step_view', _stepParams(step, extra));
     final attempt = _attempt;
@@ -272,9 +236,6 @@ class AnalyticsService {
     _persistOpen();
   }
 
-  // Evento de avance (PLANNING_STEP_COMPLETED). Su id es determinista
-  // (planning_<intento>_complete_<paso>), así completar el mismo paso dos veces
-  // no duplica el documento. durationMs = tiempo desde que se vio el paso.
   void stepCompleted(String step,
       {Map<String, Object>? extra, String? meetingId}) {
     _log('meeting_planning_step_complete', _stepParams(step, extra));
@@ -297,8 +258,6 @@ class AnalyticsService {
     _persistOpen();
   }
 
-  // Volver atrás no es abandono: el intento sigue abierto y solo cambia el paso
-  // actual. No escribe en Firestore (solo GA4).
   /// The user went back from [step] to the previous step: the attempt stays
   /// open. Ignored when no attempt is open.
   void stepLeftBackwards(String step) {
@@ -313,7 +272,6 @@ class AnalyticsService {
     _persistOpen();
   }
 
-  // Evento de abandono (PLANNING_FLOW_ABANDONED, terminal).
   /// The user left the flow at [step] without finishing. Ends the attempt.
   /// Ignored when no attempt is open (already completed, or edit mode).
   void stepAbandoned(String step,
@@ -324,10 +282,6 @@ class AnalyticsService {
     _endAbandoned(attempt, step: step, reason: reason, extra: extra);
   }
 
-  // Evento de finalización (PLANNING_FLOW_COMPLETED). Usa el mismo id que el
-  // abandono (planning_<intento>_end): un intento tiene como máximo un evento
-  // final. Como se escribe con createOnce, el primero que llega a Firestore
-  // gana.
   void planningCompleted({String? meetingId}) {
     final attempt = _attempt;
     _log('meeting_planning_completed',
@@ -345,7 +299,6 @@ class AnalyticsService {
     _closeAttempt();
   }
 
-  // Solo GA4: el dashboard propio no usa este dato.
   /// Time spent on one planning step (seconds).
   void logStepTime({required String stepName, required int durationSeconds}) =>
       _log('meeting_planning_step_time', {
@@ -353,8 +306,6 @@ class AnalyticsService {
         'duration_seconds': durationSeconds,
       });
 
-  // El evento se fecha con el updatedAt guardado (parámetro at), no con la hora
-  // actual, para que el abandono quede en el momento en que realmente se dejó.
   /// At app start: an attempt that was still open when the app was closed or
   /// killed is recorded as abandoned at its last step.
   Future<void> recoverInterruptedAttempt() async {
@@ -450,11 +401,6 @@ class AnalyticsService {
     );
   }
 
-  // createOnce + id de documento determinista = idempotencia: si el outbox
-  // reintenta, no se duplica el evento. Los intentos sin usuario no se guardan
-  // en Firestore porque las reglas exigen userId == auth.uid (solo quedan en
-  // GA4). PendingOperation.timestamp guarda la fecha como {'__ts': ms} para que
-  // el outbox sea JSON; SyncService la convierte en Timestamp de Firestore.
   /// Writes the event through the outbox (works offline). Only for attempts
   /// with a signed-in user: the security rules require `userId == auth.uid`.
   void _enqueue(

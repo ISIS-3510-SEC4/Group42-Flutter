@@ -25,15 +25,6 @@ import 'contacts_picker_sheet.dart';
 import 'recommendation/meeting_schedule.dart';
 import 'transit_mode_selector.dart';
 
-// Funcionalidades que pasan por esta pantalla:
-//  - VV2 abandono: paso 1 del embudo (inicio del intento, avance y abandono).
-//  - VV2 Google Contacts: selección de invitados (showContactsPicker).
-//  - VV3 BQ tipo 4: captura de fecha, hora y medio de transporte.
-//  - VV3 Firebase / offline: guardado con MeetingRepository (local + outbox).
-// Recorrido del guardado: vista → MeetingRepository.save (copia local + outbox)
-// → SyncService → Firestore meetings/{id}.
-// Nota MVVM: esta pantalla no tiene ViewModel propio; maneja su estado con
-// setState y llama directamente a los servicios.
 /// "Create a meeting" screen (1). Arrive from the "+" button
 /// on the bottom nav. When you press Schedule, the meeting is saved
 /// (offline-first, see MeetingRepository) and it goes to step 2 (vote).
@@ -99,9 +90,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     _didReadArgs = true;
     final args = ModalRoute.of(context)?.settings.arguments;
     final meetingId = args is Map ? args['meetingId'] as String? : null;
-    // Los argumentos de la ruta se leen aquí y no en initState porque necesitan
-    // el context completo; _didReadArgs evita repetirlo. Con meetingId es
-    // edición.
     if (meetingId != null) {
       _isEditMode = true;
       _loadingExisting = true;
@@ -115,7 +103,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     }
   }
 
-  // Edición: la reunión se lee de los datos locales (byId no usa la red).
   Future<void> _loadForEdit(String meetingId) async {
     final record = await MeetingRepository.instance.byId(meetingId);
     if (!mounted) return;
@@ -193,8 +180,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
         ? _selectedDate!
         : today;
 
-    // BQ tipo 4 – fecha: el selector no deja elegir días pasados (firstDate:
-    // today). Se guarda como texto yyyy-MM-dd en dayLabel.
     final picked = await showDatePicker(
       context: context,
       initialDate: initialDate,
@@ -226,9 +211,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
 
   Future<void> _selectTime() async {
     final initial = _selectedTime ?? const TimeOfDay(hour: 14, minute: 0);
-    // BQ tipo 4 – hora: se guarda como texto "h:mm am/pm" en timeLabel. La
-    // fecha y hora reales (scheduledAt) se calculan después con
-    // parseMeetingDateTime.
     final picked = await showTimePicker(
       context: context,
       initialTime: initial,
@@ -258,11 +240,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
 
   @override
   void dispose() {
-    // Abandono del paso 1: si la pantalla se destruye sin haber avanzado y no
-    // es edición, el intento se cierra como abandonado en "details" (reason por
-    // defecto left_screen). has_location indica si alcanzó a elegir un punto.
-    // Salir con la barra inferior (pushReplacementNamed) también destruye la
-    // pantalla y cuenta como abandono.
     if (!_isEditMode && !_advanced) {
       AnalyticsService().stepAbandoned(
         MeetingPlanningStep.details,
@@ -294,10 +271,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     }
   }
 
-  // Lectura puntual de GPS (no es el seguimiento en vivo de la reunión): se usa
-  // una sola vez para fijar el punto de encuentro. Orden de comprobaciones:
-  // servicio de ubicación activo → permiso → denegado para siempre (hay que ir
-  // a ajustes).
   /// "Use my current location": pide permiso de ubicación (solo si hace falta)
   /// y usa la posición GPS como punto de encuentro. Cada caso sin permiso o
   /// sin GPS muestra un mensaje en vez de fallar en silencio.
@@ -390,8 +363,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     _setMeetingPoint(place.point, place.toString());
   }
 
-  // Google Contacts: abre el selector (People API). Si devuelve null (cerrado o
-  // error al cargar) se conservan los invitados que ya había.
   /// Invitados: no se permite invitarse a uno mismo (contaría dos veces en
   /// la votación como organizador y como invitado).
   Future<void> _pickContacts() async {
@@ -434,8 +405,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
           ? 'Tell us what you will do'
           : InputLimits.tooLong(activity, InputLimits.activity, 'Activity');
       _whenError = _scheduleError(scheduled);
-      // BQ tipo 4 – medio de transporte obligatorio: sin él no se puede
-      // programar, así todo MEETING_CREATED nuevo lleva transitMode.
       _transitError =
           _transitMode == null ? 'Choose how the group will get there' : null;
       _locationError = _selectedLocation == null
@@ -462,14 +431,9 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     final now = DateTime.now().millisecondsSinceEpoch;
     final scheduledAt =
         parseMeetingDateTime(_dayController.text, _timeController.text);
-    // scheduledAt (DateTime) se calcula con el texto de día y hora de arriba.
     final names = _invitees.map((c) => c.displayName).toList();
     // Invitations are stored in the meeting (name, e-mail, status). They are
     // not sent: the app has no e-mail/notification backend.
-    // contactId solo se guarda si el contacto viene de People API (id
-    // "people/..."). El correo normalizado también queda en inviteeEmails
-    // (MeetingRecord.toJson):
-    // es lo que usan las reglas y la consulta de invitaciones del invitado.
     final invitees = [
       for (final c in _invitees)
         MeetingInvitee(
@@ -479,10 +443,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
         ),
     ];
     final existing = _record;
-    // Primer guardado: id uuid generado en el dispositivo y organizerId = uid
-    // de Firebase (asociación reunión–organizador). Si el usuario vuelve del
-    // paso 2 y pulsa Schedule otra vez, existing ya existe y se edita la misma
-    // reunión.
     final draft = existing == null
         ? MeetingRecord(
             id: MeetingRepository.instance.newId(),
@@ -512,8 +472,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
             pointLng: _selectedLocation?.longitude,
           );
     try {
-      // save() termina en cuanto guarda localmente; la subida a Firestore la
-      // hace el outbox, por eso crear una reunión funciona sin conexión.
       final saved = await MeetingRepository.instance.save(draft);
       if (existing == null) {
         // Business question type 4: one event per new meeting.
@@ -549,8 +507,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     }
 
     _advanced = true;
-    // Paso 1 completado. _advanced se pone en true antes de navegar para que,
-    // si la pantalla se destruye, no se registre como abandono.
     AnalyticsService().stepCompleted(
       MeetingPlanningStep.details,
       extra: {'invitees': _invitees.length},
@@ -942,8 +898,6 @@ class _LocationMapPreviewState extends State<_LocationMapPreview> {
     if (mounted) super.setState(fn);
   }
 
-  // Centrado inicial del mapa: usa la última posición conocida solo si el
-  // permiso ya estaba concedido; no pide permiso al abrir la pantalla.
   /// Solo centra el mapa: no elige el punto (para eso está el botón
   /// "Use my current location"). No pide permiso, para no insistir.
   Future<void> _centerOnLastKnownPosition() async {

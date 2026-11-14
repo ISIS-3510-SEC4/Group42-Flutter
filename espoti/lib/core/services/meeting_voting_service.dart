@@ -114,8 +114,6 @@ class MeetingVotingService {
   FirebaseFirestore get _db => FirebaseFirestore.instance;
   User? get _user => FirebaseAuth.instance.currentUser;
 
-  // Caché local de invitaciones por usuario (LocalStore): se muestran sin
-  // conexión.
   static String _cacheKey(String uid) => 'espoti_invited_meetings_v1_$uid';
 
   MeetingRecord? cachedInvited(String meetingId) => _invited[meetingId];
@@ -323,10 +321,6 @@ class MeetingVotingService {
     }
   }
 
-  // Invitaciones: las reuniones donde el usuario está invitado se encuentran
-  // por correo (inviteeEmails array-contains). Requiere correo verificado (la
-  // regla isInvited usa email_verified). No se envía correo ni notificación: el
-  // invitado las ve al entrar a la app con ese mismo correo.
   Future<List<MeetingRecord>> _fetchInvited(String email) async {
     final query = await _db
         .collection(MeetingRepository.collection)

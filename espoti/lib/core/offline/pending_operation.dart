@@ -1,9 +1,6 @@
 import 'package:uuid/uuid.dart';
 
 // Define cómo se aplica una escritura pendiente en Firestore.
-// upsert: crear o actualizar con merge (perfil, reuniones, votos).
-// createOnce: crear solo si no existe y nunca sobrescribir (eventos de
-// analítica, que deben ser idempotentes).
 enum PendingWriteKind {
 
   upsert,
@@ -21,9 +18,6 @@ class PendingOperation {
   final String ownerUid;
 
 
-  // data: campos que se escriben siempre. dataIfMissing: solo si el documento
-  // no existe. clientUpdatedAt: versión local en ms. checkConflict: comparar
-  // con la versión remota antes de escribir.
   final Map<String, dynamic> data;
   final Map<String, dynamic> dataIfMissing;
   final int clientUpdatedAt;

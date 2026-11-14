@@ -230,25 +230,15 @@ class _SettingsList extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Entradas a la pantalla del acelerómetro (VV2) y a los dashboards de
-        // abandono (VV2) y BQ tipo 4 (VV3). BQ tipo 5 no hace parte de estas
-        // funcionalidades.
         _tile(context, Icons.sensors, 'Motion sensor',
             'Live accelerometer reading', AppRoutes.motionSensor),
         _tile(context, Icons.analytics_outlined, 'Analytics BQ Type 5',
             'Recommendation acceptance rate and patterns', AppRoutes.bq5Analytics),
-        _tile(context, Icons.insights_outlined, 'Planning abandonment',
-            'Step where meeting planning is abandoned', AppRoutes.planningAbandonment),
-        _tile(context, Icons.schedule, 'Meeting peaks (BQ Type 4)',
-            'Peak days and time windows by transit mode', AppRoutes.meetingPeakWindows),
+        _tile(context, Icons.insights_outlined, 'Analytics dashboard',
+            'Planning abandonment + meeting peaks (live)', AppRoutes.analyticsDashboard),
         const Divider(height: 1, color: AppColors.mauve30),
         ListTile(
           onTap: () async {
-            // Cierre de sesión: AuthService limpia ubicación y votaciones y
-            // cierra Google y Firebase; luego se borra el perfil local. Los
-            // cambios pendientes del outbox no se borran: se suben cuando ese
-            // mismo usuario vuelva a entrar (SyncService solo envía operaciones
-            // cuyo ownerUid es el usuario actual).
             await AuthService().signOut();
             await UserService().clearUser();
             if (context.mounted) {
