@@ -151,6 +151,9 @@ service cloud.firestore {
       // El tablero de analítica de la app lee los eventos de Flutter en
       // tiempo real (la consulta filtra platform == 'FLUTTER').
       allow list: if signedIn() && resource.data.platform == 'FLUTTER';
+      // The planning-time chart reads only the signed-in user's history.
+      allow list: if signedIn()
+        && resource.data.userId == request.auth.uid;
       allow delete: if false;
     }
 

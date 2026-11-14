@@ -3,6 +3,7 @@ import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_top_bar.dart';
@@ -15,8 +16,32 @@ import '../../models/meeting.dart';
 ///  - Votación abierta ('votingOpen' = true): el lugar mostrado es solo el
 ///    voto del organizador; se indica cuántos votaron, quiénes faltan y que la
 ///    reunión queda pendiente hasta que voten todos.
-class WinningPlacePage extends StatelessWidget {
+class WinningPlacePage extends StatefulWidget {
   const WinningPlacePage({super.key});
+
+  @override
+  State<WinningPlacePage> createState() => _WinningPlacePageState();
+}
+
+class _WinningPlacePageState extends State<WinningPlacePage> {
+  bool _resultRecorded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_resultRecorded) return;
+    _resultRecorded = true;
+
+    final routeArgs = ModalRoute.of(context)?.settings.arguments;
+    final args = routeArgs is Map ? routeArgs : const <dynamic, dynamic>{};
+    final meetingId = args['meetingId'] as String?;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      AnalyticsService()
+        ..stepCompleted(MeetingPlanningStep.result, meetingId: meetingId)
+        ..planningCompleted(meetingId: meetingId);
+    });
+  }
 
   void _handleNavTap(BuildContext context, EspotiNavItem item) {
     switch (item) {

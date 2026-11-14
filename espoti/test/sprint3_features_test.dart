@@ -1,4 +1,5 @@
 import 'package:espoti/core/analytics/analytics_repository.dart';
+import 'package:espoti/core/analytics/dashboard_aggregator.dart';
 import 'package:espoti/core/analytics/recommendation_acceptance_tracker.dart';
 import 'package:espoti/core/concurrency/geo_isolate.dart';
 import 'package:espoti/core/offline/local_store.dart';
@@ -25,7 +26,57 @@ void main() {
   });
 
   group('Sprint 3 - Area 1: BQ 5 Analytics Pipeline & Tracker', () {
-    test('RecommendationAcceptanceTracker logs accepted decision with rich metadata', () async {
+    test('aggregates only explicit decisions by preference and pattern', () {
+      final result = aggregateRecommendationAcceptance([
+        {
+          'eventType': 'RECOMMENDATION_DECISION',
+          'metadata': {
+            'accepted': true,
+            'locationPreferences': ['Walk', 'Cafe'],
+            'interactionPattern': 'DETAILS_VIEWED',
+            'placeCategory': 'Cafe',
+            'distanceMeters': 450,
+          },
+        },
+        {
+          'eventType': 'RECOMMENDATION_DECISION',
+          'metadata': {
+            'accepted': false,
+            'locationPreferences': ['Walk'],
+            'interactionPattern': 'MULTIPLE_VIEWED',
+            'placeCategory': 'Park',
+            'distanceMeters': 8500,
+          },
+        },
+        {
+          'eventType': 'RECOMMENDATION_DECISION',
+          'metadata': {
+            'locationPreferences': ['Walk']
+          },
+        },
+        {
+          'eventType': 'RECOMMENDATION_SELECTED',
+          'metadata': {'accepted': true},
+        },
+      ]);
+
+      expect(result['totalDecisions'], 2);
+      expect(result['totalAccepted'], 1);
+      expect(result['totalRejected'], 1);
+      expect(result['overallAcceptanceRate'], 50.0);
+      expect(result['ignoredEvents'], 1);
+      expect((result['byPreference'] as Map)['Walk']['rate'], 50.0);
+      expect((result['byInteractionPattern'] as Map)['DETAILS_VIEWED']['rate'],
+          100.0);
+      expect(
+        (result['distanceMetrics'] as Map)['avgDistanceRejectedMeters'],
+        8500,
+      );
+    });
+
+    test(
+        'RecommendationAcceptanceTracker logs accepted decision with rich metadata',
+        () async {
       final mockRepo = _MockAnalyticsRepo();
       final tracker = RecommendationAcceptanceTracker(
         repository: mockRepo,
@@ -100,7 +151,10 @@ void main() {
       );
 
       final pending = await queue.getPendingOperations();
-      expect(pending.any((o) => o.collection == 'users' && o.docId == 'user_test_sync'), isTrue);
+      expect(
+          pending.any(
+              (o) => o.collection == 'users' && o.docId == 'user_test_sync'),
+          isTrue);
     });
   });
 

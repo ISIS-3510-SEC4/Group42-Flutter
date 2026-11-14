@@ -25,7 +25,7 @@ async function main() {
 
   const snapshot = await db.collection("analytics_events")
     .where("platform", "==", platform)
-    .where("eventType", "in", ["RECOMMENDATION_DECISION", "RECOMMENDATION_SELECTED"])
+    .where("eventType", "==", "RECOMMENDATION_DECISION")
     .get();
 
   console.log(`Found ${snapshot.size} candidate event(s)`);
@@ -33,6 +33,7 @@ async function main() {
   let totalDecisions = 0;
   let totalAccepted = 0;
   let totalRejected = 0;
+  let ignoredEvents = 0;
 
   const prefStats = {}; // { prefName: { total, accepted } }
   const patternStats = {}; // { pattern: { total, accepted } }
@@ -46,8 +47,12 @@ async function main() {
   for (const doc of snapshot.docs) {
     const event = doc.data();
     const meta = event.metadata || {};
+    if (typeof meta.accepted !== "boolean") {
+      ignoredEvents++;
+      continue;
+    }
 
-    const isAccepted = meta.accepted === true || event.eventType === "RECOMMENDATION_SELECTED";
+    const isAccepted = meta.accepted;
     totalDecisions++;
     if (isAccepted) {
       totalAccepted++;
@@ -135,6 +140,7 @@ async function main() {
     totalDecisions,
     totalAccepted,
     totalRejected,
+    ignoredEvents,
     overallAcceptanceRate: overallRate,
     byPreference,
     byInteractionPattern,
@@ -148,6 +154,7 @@ async function main() {
   console.log("Analysis Summary:", {
     totalDecisions,
     totalAccepted,
+    ignoredEvents,
     overallAcceptanceRate: `${overallRate}%`,
     preferencesCount: Object.keys(byPreference).length,
     patternsCount: Object.keys(byInteractionPattern).length

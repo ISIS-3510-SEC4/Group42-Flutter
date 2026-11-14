@@ -232,10 +232,12 @@ class _SettingsList extends StatelessWidget {
       children: [
         _tile(context, Icons.sensors, 'Motion sensor',
             'Live accelerometer reading', AppRoutes.motionSensor),
-        _tile(context, Icons.analytics_outlined, 'Analytics BQ Type 5',
+        _tile(context, Icons.analytics_outlined, 'Analytics',
             'Recommendation acceptance rate and patterns', AppRoutes.bq5Analytics),
         _tile(context, Icons.insights_outlined, 'Analytics dashboard',
             'Planning abandonment + meeting peaks (live)', AppRoutes.analyticsDashboard),
+        _tile(context, Icons.timer_outlined, 'Planning time',
+            'Average time spent on each meeting step', AppRoutes.meetingPlanningTime),
         const Divider(height: 1, color: AppColors.mauve30),
         ListTile(
           onTap: () async {
