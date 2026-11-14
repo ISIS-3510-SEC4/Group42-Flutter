@@ -8,6 +8,17 @@ import '../services/place_search_service.dart';
 import 'app_database.dart';
 import 'pending_operation.dart';
 
+// VV3 – Almacenamiento local. Dependencias declaradas en pubspec y usadas:
+// sqflite (+ sqflite_common_ffi_web en web), shared_preferences y hive_ce
+// (este último solo en ZonePlacesStore).
+// Qué sigue ahí al cerrar y abrir la app (por uid cuando es del usuario):
+//  - perfil y su fetchedAt (almacenamiento de usuario + caché con TTL)
+//  - reuniones del organizador y su fetchedAt (caché / copia offline)
+//  - outbox y operaciones fallidas (cola de sincronización)
+//  - intento de planificación abierto (VV2), invitaciones cacheadas
+//  - lugares recientes de búsqueda y última posición GPS
+// Estrategia: SQLite principal + espejo JSON en SharedPreferences como respaldo
+// si SQLite falla.
 /// Layer for local persistence and offline-first storage (Sprint 3 - Feature 1).
 ///
 /// Combines SQLite structured tables via [AppDatabase] with fallback and KV support
@@ -135,45 +146,87 @@ class LocalStore {
   // DOMAIN STORAGE: RECENT PLACES & CACHED SEARCHES
   // ===========================================================================
 
+  // Si SQLite no está disponible (falla al abrir la base, o en pruebas sin
+  // sqflite), los lugares recientes se guardan en SharedPreferences como el
+  // resto de datos de este store, en lugar de perderse.
+  static const String _recentPlacesKey = 'espoti_recent_places_v1';
+  static const int _recentPlacesMax = 50;
+
+  Future<bool> _sqliteAvailable() async {
+    try {
+      return await _db.database != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _readRecentFallback() async {
+    final raw = await readJson(_recentPlacesKey);
+    if (raw is! List) return [];
+    return [for (final e in raw) if (e is Map) Map<String, dynamic>.from(e)];
+  }
+
   /// Saves a place suggestion into the persistent search cache.
   Future<void> saveRecentPlace(PlaceSuggestion place, {String? query, String? category}) async {
     try {
-      await _db.saveRecentPlace(place, query: query, category: category);
+      if (await _sqliteAvailable()) {
+        await _db.saveRecentPlace(place, query: query, category: category);
+        return;
+      }
     } catch (e) {
       debugPrint('LocalStore: SQLite saveRecentPlace error: $e');
     }
+    final list = (await _readRecentFallback())
+        .where((e) => PlaceSuggestion.fromJson(e) != place)
+        .toList();
+    list.insert(0, {...place.toJson(), 'query': query ?? '', 'category': category});
+    await writeJson(_recentPlacesKey, list.take(_recentPlacesMax).toList());
   }
 
   /// Retrieves recent places from the persistent search cache.
   Future<List<PlaceSuggestion>> getRecentPlaces({int limit = 10}) async {
     try {
-      return await _db.getRecentPlaces(limit: limit);
+      if (await _sqliteAvailable()) return await _db.getRecentPlaces(limit: limit);
     } catch (e) {
       debugPrint('LocalStore: SQLite getRecentPlaces error: $e');
-      return [];
     }
+    return (await _readRecentFallback())
+        .take(limit)
+        .map(PlaceSuggestion.fromJson)
+        .toList();
   }
 
   /// Searches previously cached places matching [query] offline.
   Future<List<PlaceSuggestion>> searchCachedPlaces(String query, {int limit = 10}) async {
     try {
-      return await _db.searchCachedPlaces(query, limit: limit);
+      if (await _sqliteAvailable()) {
+        return await _db.searchCachedPlaces(query, limit: limit);
+      }
     } catch (e) {
       debugPrint('LocalStore: SQLite searchCachedPlaces error: $e');
-      return [];
     }
+    final q = query.trim().toLowerCase();
+    return (await _readRecentFallback())
+        .where((e) => [e['query'], e['title'], e['subtitle']]
+            .any((v) => v is String && v.toLowerCase().contains(q)))
+        .take(limit)
+        .map(PlaceSuggestion.fromJson)
+        .toList();
   }
 
   Future<void> clearRecentPlaces() async {
     try {
       await _db.clearRecentPlaces();
     } catch (_) {}
+    await remove(_recentPlacesKey);
   }
 
   // ===========================================================================
   // DOMAIN STORAGE: PENDING TRANSACTIONS (SYNC OUTBOX)
   // ===========================================================================
 
+  // Detalle: el espejo en SharedPreferences se escribe dentro del mismo try que
+  // SQLite; si SQLite lanza un error, el espejo tampoco se actualiza.
   Future<void> savePendingOperations(List<PendingOperation> ops, {bool isDeadLetter = false}) async {
     try {
       final key = isDeadLetter ? deadLetterKey : outboxKey;
@@ -185,6 +238,7 @@ class LocalStore {
     }
   }
 
+  // Si SQLite devuelve una lista vacía (o falla) se lee el espejo JSON.
   Future<List<PendingOperation>> getPendingOperations({bool deadLetterOnly = false}) async {
     try {
       final fromDb = await _db.getPendingTransactions(deadLetterOnly: deadLetterOnly);
@@ -214,6 +268,7 @@ class LocalStore {
   // GENERIC KEY-VALUE PERSISTENCE (SQLite + SharedPreferences Mirror)
   // ===========================================================================
 
+  // Los JSON grandes (> 16 KB) se decodifican en otro isolate (JsonIsolate).
   /// Reads a JSON object by key, querying SQLite KV store with SharedPreferences fallback.
   Future<Object?> readJson(String key) async {
     try {
@@ -285,6 +340,19 @@ class LocalStore {
       final prefs = await _prefs;
       await prefs.setDouble('last_known_gps_lat', lat);
       await prefs.setDouble('last_known_gps_lng', lng);
+    } catch (_) {}
+  }
+
+  // Privacidad: AuthService.signOut la borra para que otra cuenta no la vea.
+  /// Removes the last known position (called on sign-out).
+  Future<void> clearLastLocation() async {
+    try {
+      await _db.clearLastLocation();
+    } catch (_) {}
+    try {
+      final prefs = await _prefs;
+      await prefs.remove('last_known_gps_lat');
+      await prefs.remove('last_known_gps_lng');
     } catch (_) {}
   }
 

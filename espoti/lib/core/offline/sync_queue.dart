@@ -6,6 +6,9 @@ import 'local_store.dart';
 import 'pending_operation.dart';
 import 'sync_service.dart';
 
+// Fachada sobre SyncService: no tiene cola propia, delega todo. En lib/ solo se
+// usa enqueueProfileUpdate (UserService.saveUser); enqueueMeetingUpsert y
+// processQueue no se llaman (MeetingRepository usa SyncService directamente).
 /// SyncQueue (Sprint 3 - Feature 2 / EvC):
 /// Manages pending offline transactions and coordinates automatic synchronization
 /// with Cloud Firestore when network connectivity is reestablished.

@@ -15,22 +15,21 @@ class AttendeeAvatars extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: List.generate(count, (index) {
-        return Padding(
-          padding: EdgeInsets.only(
-            right: index < count - 1 ? AppDimensions.paddingS : 0,
+    // Wrap en lugar de Row: con muchos participantes los avatares bajan de
+    // línea en vez de desbordar la pantalla horizontalmente.
+    return Wrap(
+      spacing: AppDimensions.paddingS,
+      runSpacing: AppDimensions.paddingS,
+      children: List.generate(count, (_) {
+        return Container(
+          width: size,
+          height: size,
+          decoration: const BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.mauve30,
           ),
-          child: Container(
-            width: size,
-            height: size,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.mauve30,
-            ),
-            child: Icon(Icons.person,
-                color: AppColors.primaryBrown, size: size * 0.5),
-          ),
+          child: Icon(Icons.person,
+              color: AppColors.primaryBrown, size: size * 0.5),
         );
       }),
     );

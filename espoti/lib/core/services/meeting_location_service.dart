@@ -29,12 +29,16 @@ class MeetingLocationService {
           .doc(meetingId)
           .collection('locations');
 
+  // Escritura: el id del documento es el uid. Las reglas exigen auth.uid ==
+  // uid, userId == uid, ser participante y estar en la ventana de la reunión.
+  // moving guarda el estado del acelerómetro en ese momento.
   /// Writes the signed-in user's latest location (asynchronous).
   /// Throws if the user is not authenticated or the write fails.
   Future<void> updateMyLocation(
     String meetingId, {
     required double latitude,
     required double longitude,
+    bool moving = false,
   }) async {
     // Authenticate Actors: the document id is the verified Firebase uid.
     final user = AuthService().currentUser;
@@ -48,10 +52,18 @@ class MeetingLocationService {
       'name': UserService().currentUser.name,
       'latitude': latitude,
       'longitude': longitude,
+      // Estado del acelerómetro al enviar la posición: los demás
+      // participantes lo usan para mostrar "is moving" cerca de la hora.
+      'moving': moving,
       'timestamp': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
 
+  // Acceso a los datos: listener en tiempo real (snapshots) activo solo
+  // mientras alguien escucha. Lo consumen LocationSyncStatusLine (cuántos
+  // tienen ubicación) y OnTheWayNotice (aviso "en camino"). No hay un mapa que
+  // dibuje estas posiciones: el detalle de la reunión muestra un ícono
+  // estático.
   /// Live map of userId -> latest location for [meetingId], synchronized from
   /// Firestore. The Firestore listener starts with the first listener of the
   /// returned notifier and stops when the last one is removed.
@@ -123,6 +135,7 @@ class _LocationsNotifier
         longitude: lng.toDouble(),
         // null while the server timestamp of a local write is still pending.
         updatedAt: timestamp is Timestamp ? timestamp.toDate() : DateTime.now(),
+        moving: data['moving'] == true,
       );
     }
     value = result;

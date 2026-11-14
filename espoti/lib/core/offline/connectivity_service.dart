@@ -3,6 +3,11 @@ import 'dart:io' show InternetAddress, SocketException;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 
+// Conectividad eventual: connectivity_plus solo dice si hay wifi o datos, no si
+// hay internet. Por eso check() hace además una consulta DNS a
+// firestore.googleapis.com (timeout 4 s). isOnline (ValueNotifier) lo observan
+// SyncService y la interfaz. _inFlight hace que llamadas simultáneas compartan
+// una misma comprobación. En web siempre responde true.
 /// Service that monitors device connectivity using [Connectivity] from
 /// connectivity_plus, validated with a DNS probe against Firestore.
 class ConnectivityService {
@@ -72,6 +77,8 @@ class ConnectivityService {
     return online;
   }
 
+  // Si una escritura falla por red, se marca offline aunque el sistema
+  // operativo diga que hay conexión.
   void reportNetworkFailure() => _set(false);
 
   @visibleForTesting

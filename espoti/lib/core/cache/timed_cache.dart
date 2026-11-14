@@ -1,5 +1,7 @@
 // Implementa una caché en memoria con tiempo de expiración (TTL).
 
+// Guarda una sola clave a la vez (pensada para "las reuniones del usuario
+// actual"); pedir otra clave es un fallo de caché. Solo memoria.
 class TimedCache<T> {
 
   // Constructor que recibe obligatoriamente el tiempo de vida de la caché (ttl).

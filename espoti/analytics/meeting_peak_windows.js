@@ -41,6 +41,7 @@ async function main() {
     .where("eventType", "==", "MEETING_CREATED")
     .get();
 
+  // seenMeetings: protección extra contra duplicados (un evento por reunión).
   const seenMeetings = new Set();
   const byMode = {};
   let ignoredEvents = 0;
@@ -62,6 +63,9 @@ async function main() {
     seenMeetings.add(event.meetingId);
 
     const mode = m.transitMode;
+    // Conteos por medio de transporte: por día y ventana en que se CREÓ la
+    // reunión y, si se pudo leer la fecha, por día y ventana en que se
+    // PROGRAMÓ.
     increment(byMode, mode, "total");
     increment(byMode, mode, "createdByDay", m.createdDayOfWeek);
     increment(byMode, mode, "createdByWindow", m.createdTimeWindow);
@@ -72,6 +76,7 @@ async function main() {
     }
   }
 
+  // Pico = la clave con más reuniones dentro de cada medio de transporte.
   const peaks = {};
   for (const [mode, data] of Object.entries(byMode)) {
     peaks[mode] = {

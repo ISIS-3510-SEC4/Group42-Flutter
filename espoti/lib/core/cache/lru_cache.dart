@@ -1,5 +1,8 @@
 import 'dart:collection';
 
+// Uso en la app: lugares por zona (20 entradas, NearbyRecommendationsService) y
+// clima (50, WeatherService). Solo memoria: se pierde al cerrar la app. No
+// expira por tiempo, solo por capacidad.
 /// In-memory cache that keeps at most [capacity] entries and evicts the
 /// least recently used one when it is full.
 ///

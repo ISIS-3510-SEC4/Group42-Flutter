@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 
+// No se usa en las pantallas: computeCentroid y filterCandidatesWithinRadius no
+// se llaman desde lib/, y parseOsrmRoute solo lo llama RoutingService, que
+// ninguna pantalla usa. Solo las pruebas ejercitan este código.
 /// Multithreading / Concurrency engine for heavy GPS and routing calculations (Sprint 3 - Feature 3).
 ///
 /// Runs intensive geometric, distance, and routing algorithms in background Dart Isolates
@@ -20,23 +23,6 @@ class GeoIsolate {
     final result = await compute(_centroidWorker, rawPoints, debugLabel: 'geo-isolate-centroid');
     if (result == null) return null;
     return LatLng(result[0], result[1]);
-  }
-
-  /// Calculates fair-travel rankings and distances for candidates and participants in an Isolate.
-  static Future<List<Map<String, dynamic>>> rankPlacesFairTravel({
-    required List<Map<String, dynamic>> rawCandidates,
-    required List<Map<String, dynamic>> rawParticipants,
-  }) async {
-    if (rawCandidates.isEmpty || rawParticipants.isEmpty) return [];
-
-    final payload = {
-      'candidates': rawCandidates,
-      'participants': rawParticipants,
-    };
-
-    if (kIsWeb) return _fairTravelRankingWorker(payload);
-
-    return compute(_fairTravelRankingWorker, payload, debugLabel: 'geo-isolate-fair-ranking');
   }
 
   /// Parses OSRM GeoJSON route response and generates points list in an Isolate.
@@ -94,50 +80,6 @@ List<double>? _centroidWorker(List<List<double>> rawPoints) {
   return [sumLat / rawPoints.length, sumLng / rawPoints.length];
 }
 
-List<Map<String, dynamic>> _fairTravelRankingWorker(Map<String, dynamic> payload) {
-  final candidates = (payload['candidates'] as List).cast<Map<String, dynamic>>();
-  final participants = (payload['participants'] as List).cast<Map<String, dynamic>>();
-
-  final results = <Map<String, dynamic>>[];
-
-  for (final candidate in candidates) {
-    final cLat = (candidate['lat'] as num).toDouble();
-    final cLng = (candidate['lng'] as num).toDouble();
-
-    final distances = <double>[];
-    for (final participant in participants) {
-      final pLat = (participant['lat'] as num).toDouble();
-      final pLng = (participant['lng'] as num).toDouble();
-      distances.add(_haversineDistance(cLat, cLng, pLat, pLng));
-    }
-
-    if (distances.isEmpty) continue;
-
-    double maxDist = distances.reduce(math.max);
-    double minDist = distances.reduce(math.min);
-    double sum = distances.reduce((a, b) => a + b);
-    double mean = sum / distances.length;
-
-    double varianceSum = 0;
-    for (final d in distances) {
-      varianceSum += (d - mean) * (d - mean);
-    }
-    double stdDev = math.sqrt(varianceSum / distances.length);
-    double score = maxDist + stdDev;
-
-    results.add({
-      'candidate': candidate,
-      'score': score,
-      'maxDistance': maxDist,
-      'minDistance': minDist,
-      'stdDev': stdDev,
-    });
-  }
-
-  // Sort ascending by score (fair travel best score is lowest)
-  results.sort((a, b) => (a['score'] as double).compareTo(b['score'] as double));
-  return results;
-}
 
 Map<String, dynamic>? _osrmRouteWorker(String rawJson) {
   try {
@@ -148,7 +90,9 @@ Map<String, dynamic>? _osrmRouteWorker(String rawJson) {
 
     final route = routes.first as Map<String, dynamic>;
     final distanceMeters = (route['distance'] as num).toDouble();
-    final durationSeconds = (route['duration'] as num).toDouble();
+    // 'duration' puede faltar en la respuesta: antes el cast fallaba y se
+    // descartaba toda la ruta (quedaba solo la línea recta de respaldo).
+    final durationSeconds = (route['duration'] as num?)?.toDouble() ?? 0.0;
     final geometry = route['geometry'] as Map<String, dynamic>;
     final coordinates = geometry['coordinates'] as List;
 

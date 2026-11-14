@@ -2,6 +2,20 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import 'location_sharing_service.dart';
+import 'meeting_voting_service.dart';
+
+// Autenticación de Espoti (singleton).
+//
+// Diferencia clave para la sustentación:
+//  - Firebase Authentication administra la sesión de la app: el uid (Firebase
+//    UID), la persistencia de la sesión y authStateChanges. Ese uid es el que
+//    se usa como id de users/{uid}, organizerId de las reuniones y userId de
+//    los eventos de analítica.
+//  - Google Sign-In es solo un proveedor de identidad: entrega un idToken de
+//    Google que se cambia por una credencial de Firebase
+//    (GoogleAuthProvider.credential). La cuenta de Google también se usa para
+//    pedir el permiso de contactos (ContactsService).
 class AuthService {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
@@ -17,8 +31,15 @@ class AuthService {
 
   /// Whether a user is currently logged in.
   bool get isAuthenticated => _auth.currentUser != null;
+  // Cuenta de Google en memoria: solo existe si el usuario entró con Google en
+  // esta ejecución de la app. Si la app se reinicia, Firebase restaura la
+  // sesión pero esto queda en null (no se llama a
+  // attemptLightweightAuthentication), y Google Contacts pide volver a entrar
+  // con Google. Tampoco existe para quien entró con correo y contraseña.
   GoogleSignInAccount? get googleAccount => _googleAccount;
 
+  // Correo y contraseña: autenticación 100 % de Firebase. El error de Firebase
+  // se traduce a un texto legible y se lanza como String; la vista lo muestra.
   /// Sign in with email and password.
   Future<UserCredential> signInWithEmailAndPassword({
     required String email,
@@ -51,6 +72,8 @@ class AuthService {
     }
   }
 
+  // GoogleSignIn (v7) se inicializa una sola vez; si falla se permite
+  // reintentar.
   Future<void>? _googleInit;
   GoogleSignInAccount? _googleAccount;
 
@@ -77,28 +100,49 @@ class AuthService {
     try {
       final google = await googleSignIn;
       if (!google.supportsAuthenticate()) {
-        throw 'Google Sign-In no está disponible en esta plataforma.';
+        throw 'Google Sign-In is not available on this platform.';
       }
+      // Flujo con Google: 1) Google muestra su selector y autentica la cuenta;
+      // 2) se toma el idToken; 3) Firebase valida ese token e inicia (o crea)
+      //    la sesión de Firebase. El uid resultante es el de Firebase, no un id
+      //    de Google.
       final account = await google.authenticate();
       _googleAccount = account;
       final idToken = account.authentication.idToken;
       if (idToken == null) {
-        throw 'No se pudo obtener la credencial de Google. Inténtalo de nuevo.';
+        throw 'Could not get the Google credential. Please try again.';
       }
       return await _auth.signInWithCredential(
         GoogleAuthProvider.credential(idToken: idToken),
       );
     } on GoogleSignInException catch (e) {
+      // Cancelar el selector no es un error: se devuelve null y la vista sigue
+      // en login.
       if (e.code == GoogleSignInExceptionCode.canceled) return null;
       debugPrint('Google sign-in error: ${e.code} ${e.description}');
-      throw 'No se pudo iniciar sesión con Google. Verifica tu conexión y la configuración de la app.';
+      throw 'Could not sign in with Google. Check your connection and the app configuration.';
     } on FirebaseAuthException catch (e) {
       throw getReadableAuthError(e);
     }
   }
 
-  /// Sign out the current user (Firebase and Google session).
+  /// Sign out the current user (Firebase and Google session). Stops location
+  /// sharing and removes the last GPS position stored on this device, so the
+  /// next account on the phone never sees it.
   Future<void> signOut() async {
+    try {
+      // Orden del cierre de sesión: primero se limpia lo que pertenece al
+      // usuario (ubicación compartida y última posición GPS local, votaciones
+      // en memoria), luego Google y al final Firebase. Cuando _auth.signOut()
+      // termina, authStateChanges emite null y AuthGuard saca al usuario de las
+      // vistas protegidas. El perfil local se borra aparte (ProfilePage →
+      // clearUser).
+      await LocationSharingService().clearOnSignOut();
+    } catch (e) {
+      debugPrint('Local location not cleared: $e');
+    }
+    // Las votaciones e invitaciones en memoria son del usuario que sale.
+    MeetingVotingService.instance.clear();
     try {
       await (await googleSignIn).signOut();
     } catch (e) {
@@ -124,28 +168,29 @@ class AuthService {
     return true;
   }
 
-  /// Translates common Firebase auth error codes into friendly Spanish messages.
+  /// Traduce los códigos de error de Firebase Auth a mensajes en inglés para
+  /// la interfaz (toda la UI está en inglés).
   static String getReadableAuthError(FirebaseAuthException exception) {
     switch (exception.code) {
       case 'user-not-found':
-        return 'No existe ninguna cuenta con este correo electrónico.';
+        return 'There is no account with this email.';
       case 'wrong-password':
       case 'invalid-credential':
-        return 'Credenciales inválidas. Revisa tu correo y contraseña.';
+        return 'Invalid credentials. Check your email and password.';
       case 'email-already-in-use':
-        return 'Este correo ya está registrado en la base de datos.';
+        return 'This email is already registered.';
       case 'invalid-email':
-        return 'El formato del correo electrónico no es válido.';
+        return 'The email format is not valid.';
       case 'weak-password':
-        return 'La contraseña es muy débil. Debe tener al menos 6 caracteres.';
+        return 'The password is too weak. It must have at least 6 characters.';
       case 'user-disabled':
-        return 'Esta cuenta ha sido inhabilitada.';
+        return 'This account has been disabled.';
       case 'network-request-failed':
-        return 'Error de conexión. Verifica tu conexión a internet.';
+        return 'Connection error. Check your internet connection.';
       case 'too-many-requests':
-        return 'Demasiados intentos fallidos. Intenta más tarde.';
+        return 'Too many failed attempts. Try again later.';
       default:
-        return exception.message ?? 'Ocurrió un error inesperado de autenticación.';
+        return exception.message ?? 'An unexpected authentication error occurred.';
     }
   }
 }

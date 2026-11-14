@@ -6,11 +6,15 @@ import 'package:sqflite/sqflite.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../models/meeting_record.dart';
+import '../../models/meeting_vote.dart';
 import '../../models/transit_mode.dart';
 import '../../models/user.dart';
 import '../services/place_search_service.dart';
 import 'pending_operation.dart';
 
+// Tablas: user_profiles, meetings, recent_places, pending_transactions (outbox)
+// y key_value_store. En web se usa SQLite en WebAssembly (ver main.dart). Si la
+// base no se puede abrir, _initFailed hace que LocalStore use su respaldo.
 /// Central SQLite Database management for Espoti (Sprint 3 - Feature 1).
 ///
 /// Provides structured persistence for:
@@ -24,7 +28,7 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static const String _dbName = 'espoti_local.db';
-  static const int _dbVersion = 1;
+  static const int _dbVersion = 3;
 
   Database? _db;
   bool _initFailed = false;
@@ -90,6 +94,8 @@ class AppDatabase {
         transitMode TEXT,
         budgetPerPerson INTEGER,
         inviteeNames TEXT,
+        invitees TEXT,
+        candidates TEXT,
         pointLat REAL,
         pointLng REAL,
         placeName TEXT,
@@ -150,8 +156,16 @@ class AppDatabase {
     await batch.commit(noResult: true);
   }
 
+  // Migraciones: agregan columnas sin borrar los datos existentes.
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Migrations for future database versions
+    // v2: invitees with e-mail and invitation status (JSON list).
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE meetings ADD COLUMN invitees TEXT');
+    }
+    // v3: lugares candidatos de la votación (lista JSON).
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE meetings ADD COLUMN candidates TEXT');
+    }
   }
 
   // ===========================================================================
@@ -260,6 +274,8 @@ class AppDatabase {
   // MEETINGS
   // ===========================================================================
 
+  // Reemplaza la copia del organizador: borra las filas que ya no están en la
+  // lista y reescribe las demás (ConflictAlgorithm.replace), todo en un batch.
   Future<void> saveMeetings(String uid, List<MeetingRecord> meetings, {DateTime? fetchedAt}) async {
     final db = await database;
     if (db == null) return;
@@ -293,6 +309,8 @@ class AppDatabase {
           'transitMode': m.transitMode?.name,
           'budgetPerPerson': m.budgetPerPerson,
           'inviteeNames': jsonEncode(m.inviteeNames),
+          'invitees': jsonEncode(m.invitees.map((i) => i.toJson()).toList()),
+          'candidates': jsonEncode(m.candidates.map((c) => c.toJson()).toList()),
           'pointLat': m.pointLat,
           'pointLng': m.pointLng,
           'placeName': m.placeName,
@@ -339,12 +357,37 @@ class AppDatabase {
 
   MeetingRecord? _meetingFromRow(Map<String, Object?> r) {
     try {
-      List<String> invitees = [];
+      List<String> inviteeNames = [];
       if (r['inviteeNames'] is String) {
         final decoded = jsonDecode(r['inviteeNames'] as String);
-        if (decoded is List) invitees = decoded.map((e) => e.toString()).toList();
+        if (decoded is List) inviteeNames = decoded.map((e) => e.toString()).toList();
       }
 
+      var invitees = <MeetingInvitee>[];
+      if (r['invitees'] is String) {
+        final decoded = jsonDecode(r['invitees'] as String);
+        if (decoded is List) {
+          invitees = decoded
+              .map(MeetingInvitee.tryFromMap)
+              .whereType<MeetingInvitee>()
+              .toList();
+        }
+      }
+
+      var candidates = <MeetingCandidate>[];
+      if (r['candidates'] is String) {
+        final decoded = jsonDecode(r['candidates'] as String);
+        if (decoded is List) {
+          candidates = decoded
+              .map(MeetingCandidate.tryFromMap)
+              .whereType<MeetingCandidate>()
+              .toList();
+        }
+      }
+
+      // En esta tabla transitMode se guarda con el name del enum
+      // (publicTransit), no con el wireName de Firestore; se lee con el mismo
+      // criterio.
       TransitMode? mode;
       final modeStr = r['transitMode'] as String?;
       if (modeStr != null && modeStr.isNotEmpty) {
@@ -365,7 +408,9 @@ class AppDatabase {
         scheduledAt: scheduledTs != null ? DateTime.fromMillisecondsSinceEpoch(scheduledTs) : null,
         transitMode: mode,
         budgetPerPerson: r['budgetPerPerson'] as int?,
-        inviteeNames: invitees,
+        inviteeNames: inviteeNames,
+        invitees: invitees,
+        candidates: candidates,
         pointLat: (r['pointLat'] as num?)?.toDouble(),
         pointLng: (r['pointLng'] as num?)?.toDouble(),
         placeName: r['placeName'] as String?,
@@ -598,6 +643,11 @@ class AppDatabase {
   Future<void> saveLastLocation(double lat, double lng) async {
     await setKvString('last_known_gps_lat', lat.toString());
     await setKvString('last_known_gps_lng', lng.toString());
+  }
+
+  Future<void> clearLastLocation() async {
+    await removeKvKey('last_known_gps_lat');
+    await removeKvKey('last_known_gps_lng');
   }
 
   Future<Map<String, double>?> getLastLocation() async {

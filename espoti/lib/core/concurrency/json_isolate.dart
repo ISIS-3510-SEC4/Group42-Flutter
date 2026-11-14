@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 
+// Lo usa LocalStore.readJson / writeJson. compute crea un isolate temporal, lo
+// que tiene un costo; por eso solo se usa por encima del umbral.
 class JsonIsolate {
   
   JsonIsolate._();
