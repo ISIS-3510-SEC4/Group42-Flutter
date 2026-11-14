@@ -8,6 +8,7 @@ enum AnalyticsEventType {
   planningStepStarted('PLANNING_STEP_STARTED'),
   planningStepCompleted('PLANNING_STEP_COMPLETED'),
   planningFlowAbandoned('PLANNING_FLOW_ABANDONED'),
+  planningFlowCompleted('PLANNING_FLOW_COMPLETED'),
   featureUsed('FEATURE_USED'),
   filterUsed('FILTER_USED'),
   meetingCreated('MEETING_CREATED');

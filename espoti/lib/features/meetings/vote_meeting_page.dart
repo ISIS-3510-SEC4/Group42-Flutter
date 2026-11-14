@@ -5,37 +5,41 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/widgets/bottom_navigation.dart';
-import '../../core/widgets/espoti_logo.dart';
+import '../../core/widgets/espoti_top_bar.dart';
+import '../../core/services/meeting_voting_service.dart';
+import '../../models/contact.dart';
+import '../../models/meeting_vote.dart';
 import '../../models/meeting.dart';
 import '../../core/analytics/analytics_tracker.dart';
 import '../../core/services/analytics_service.dart';
 import '../../core/widgets/attendee_avatars.dart';
 import '../../core/services/meeting_repository.dart';
 import '../../models/meeting_record.dart';
-import 'budget_recommendation_service.dart';
 import 'meeting_candidates_database.dart';
 import 'nearby_recommendations_service.dart';
 import 'recommendation/meeting_schedule.dart';
 import 'recommendation/recommendation_strategy.dart';
-import 'recommendation/simulated_data.dart';
 import 'recommendation/weather_service.dart';
 
-enum _StrategyOption { closest, fair }
-
 /// Where the candidate places came from.
-enum _PlacesSource { live, stored, sample }
+/// (Se quitaron los lugares "de ejemplo": sin servicio ni lugares guardados se
+/// muestra un error, nunca lugares inventados por los que se pudiera votar.)
+enum _PlacesSource { live, stored }
 
-/// SharedPreferences key of the strategy the user picked last time.
-const _strategyPreferenceKey = 'vote_strategy';
+/// Cuántos lugares recomendados pasan a la votación de los invitados.
+const _maxVoteCandidates = 5;
 
-/// "Create a meeting" (2) — shows the attendees and the
-/// recommendations of places to vote. The chosen place is saved in the meeting.
+/// "Create a meeting" (2): muestra los participantes que el usuario agregó y
+/// los lugares más cercanos al punto elegido; el organizador vota por uno.
+///
+/// - Sin invitados: el voto del organizador define el lugar (scheduled).
+/// - Con invitados: la reunión pasa a pending_votes con los candidatos
+///   guardados, y queda así hasta que todos voten (ver MeetingVotingService).
 class VoteMeetingPage extends StatefulWidget {
   const VoteMeetingPage({super.key});
 
@@ -50,19 +54,22 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   final _weatherService = WeatherService();
   WeatherForecast? _forecast;
   DateTime? _meetingMoment;
-  String _meetingWhenLabel = 'este momento';
+  String _meetingWhenLabel = 'that time';
   List<Meeting> _recommendations = const [];
-  List<Participant> _participants = const [];
+
+  /// Lugares ordenados, alineados con [_recommendations] (mismo índice); se
+  /// usan para guardar las coordenadas de los candidatos de la votación.
+  List<PlaceCandidate> _rankedPlaces = const [];
   List<PlaceCandidate> _candidates = const [];
-  _StrategyOption _strategyOption = _StrategyOption.fair;
+
+  /// Solo los contactos que el usuario agregó en el paso 1 (sin simulados).
+  List<GoogleContact> _invitees = const [];
   _PlacesSource _placesSource = _PlacesSource.live;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   LatLng? _location;
   bool _isLoadingRecommendations = false;
   String? _recommendationsError;
   bool _didLoadRouteArguments = false;
-  int? _budget; // compatible max budget per person (COP), if any
-  bool _budgetRelaxed = false;
   bool _advanced = false;
   String? _meetingId; // meeting saved in step 1 (Firestore id)
   bool _savingChoice = false;
@@ -73,8 +80,8 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   void initState() {
     super.initState();
     AnalyticsService().stepViewed(MeetingPlanningStep.vote);
-    // When the network comes back, a list that came from a fallback (saved or
-    // sample places) reloads by itself with live data.
+    // When the network comes back, a list that came from saved places (or
+    // that failed) reloads by itself with live data.
     _connectivitySubscription =
         Connectivity().onConnectivityChanged.listen((results) {
       final online = results.any((r) => r != ConnectivityResult.none);
@@ -82,7 +89,8 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       if (online &&
           location != null &&
           !_isLoadingRecommendations &&
-          _placesSource != _PlacesSource.live) {
+          (_placesSource != _PlacesSource.live ||
+              _recommendationsError != null)) {
         _loadRecommendations(location);
       }
     });
@@ -101,9 +109,9 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     _meetingMoment = parseMeetingDateTime(day, time);
     if (_meetingMoment != null) _meetingWhenLabel = '$day $time'.trim();
     _meetingId = args['meetingId'] as String?;
+    final invitees = args['invitees'];
+    if (invitees is List) _invitees = invitees.whereType<GoogleContact>().toList();
     final location = args['location'];
-    final budget = args['budget'];
-    if (budget is int) _budget = budget;
     if (location is LatLng) {
       _location = location;
       _loadRecommendations(location);
@@ -113,24 +121,15 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   @override
   void dispose() {
     if (!_advanced) {
-      AnalyticsService().stepAbandoned(MeetingPlanningStep.vote);
+      // Back to step 1 (still open): the attempt continues. Leaving through
+      // the bottom navigation or the menu is recorded as abandonment in
+      // _recordLeaving.
+      AnalyticsService().stepLeftBackwards(MeetingPlanningStep.vote);
     }
     _connectivitySubscription?.cancel();
     _recommendationsService.close();
     _weatherService.close();
     super.dispose();
-  }
-
-  /// Strategy picked last time: a single small value, so SharedPreferences.
-  Future<_StrategyOption> _loadPreferredStrategy() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      return _StrategyOption.values
-              .asNameMap()[prefs.getString(_strategyPreferenceKey)] ??
-          _StrategyOption.fair;
-    } catch (_) {
-      return _StrategyOption.fair;
-    }
   }
 
   /// Places saved on this device: the meeting's own list (SQLite) first, then
@@ -150,8 +149,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   }
 
   /// Live places (LRU or Overpass); if that fails, the ones saved on this
-  /// device; sample places as a last resort. Never throws, so it can run in
-  /// parallel with the other loads.
+  /// device. Throws when there is nothing real to show.
   Future<(List<PlaceCandidate>, _PlacesSource)> _loadCandidates(
       LatLng location) async {
     try {
@@ -172,7 +170,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     } catch (_) {
       final stored = await _storedCandidates(location);
       if (stored.isNotEmpty) return (stored, _PlacesSource.stored);
-      return (samplePlacesAround(location), _PlacesSource.sample);
+      rethrow;
     }
   }
 
@@ -193,23 +191,18 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     });
     try {
       // Independent loads run at the same time instead of one after another.
-      final (strategy, participants, (candidates, source), forecast) = await (
-        _loadPreferredStrategy(),
-        loadParticipants(location),
+      final ((candidates, source), forecast) = await (
         _loadCandidates(location),
         _loadForecast(location),
       ).wait;
       _reviewTracker.loaded([
         if (source == _PlacesSource.stored) 'stored_places',
-        if (source == _PlacesSource.sample) 'sample_places',
         if (forecast == null) 'weather_unavailable',
       ], meetingId: _meetingId);
       if (!mounted) return;
       setState(() {
         _selectedIndex = 0;
-        _strategyOption = strategy;
         _forecast = forecast;
-        _participants = participants;
         _candidates = candidates;
         _placesSource = source;
         _isLoadingRecommendations = false;
@@ -219,17 +212,17 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
       if (!mounted) return;
       setState(() {
         _recommendationsError =
-            'No se pudieron cargar lugares cercanos. Comprueba tu conexión e inténtalo de nuevo.';
+            'Could not load nearby places and there are no saved places for this area. Check your connection and try again.';
         _isLoadingRecommendations = false;
       });
     }
   }
 
+  /// Solo queda la estrategia "más cercano al punto elegido" (se eliminó la
+  /// estrategia "más justa"); si es probable que llueva, el decorador baja los
+  /// lugares al aire libre.
   RecommendationStrategy get _strategy {
-    final base = switch (_strategyOption) {
-      _StrategyOption.closest => ClosestToPointStrategy(reference: _location!),
-      _StrategyOption.fair => const FairTravelStrategy(),
-    };
+    final base = ClosestToPointStrategy(reference: _location!);
     final forecast = _forecast;
     if (forecast == null || !forecast.rainLikely) return base;
     return RainAwareStrategy(
@@ -238,43 +231,39 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     );
   }
 
-  /// Ranks the candidates with the selected strategy and shows the top 10.
+  /// Ranks the candidates and shows the top 10.
   void _applyStrategy() {
-    final ranked = _strategy.rank(_candidates, _participants).take(10);
-    final recommendations = [
-      for (final place in ranked)
-        Meeting(
-          placeName: place.place.name,
-          timeLabel: place.place.category,
-          distanceLabel: place.explanation,
-          rating: null,
-          imageUrl: _mapThumbnailUrl(place.place.location),
-        ),
-    ];
-    // Budget-based affordability filter on top of the ranked results.
-    final result = BudgetRecommendationService.apply(recommendations, _budget);
+    final ranked = _strategy.rank(_candidates, const []).take(10).toList();
     setState(() {
-      _recommendations = result.places;
-      _budgetRelaxed = result.relaxed;
+      _rankedPlaces = [for (final r in ranked) r.place];
+      _recommendations = [
+        for (final place in ranked)
+          Meeting(
+            placeName: place.place.name,
+            timeLabel: place.place.category,
+            distanceLabel: place.explanation,
+            rating: null,
+            imageUrl: _mapThumbnailUrl(place.place.location),
+          ),
+      ];
       _selectedIndex = 0;
     });
     _reviewTracker.displayed(
-        resultCount: result.places.length, meetingId: _meetingId);
+        resultCount: _recommendations.length, meetingId: _meetingId);
   }
 
-  void _selectStrategy(_StrategyOption option) {
-    if (option == _strategyOption || _location == null) return;
-    setState(() => _strategyOption = option);
-    _applyStrategy();
-    SharedPreferences.getInstance()
-        .then((prefs) => prefs.setString(_strategyPreferenceKey, option.name))
-        .catchError((Object error) {
-      debugPrint('Strategy preference not saved: $error');
-      return false;
-    });
+  /// Salir del paso 2 por la barra inferior o el menú cuenta como abandono
+  /// del intento de planificación (no como "volver al paso 1").
+  void _recordLeaving() {
+    if (_advanced) return;
+    AnalyticsService().stepAbandoned(
+      MeetingPlanningStep.vote,
+      reason: PlanningAbandonReason.navigation,
+    );
   }
 
   void _handleNavTap(EspotiNavItem item) {
+    if (item != EspotiNavItem.createMeeting) _recordLeaving();
     switch (item) {
       case EspotiNavItem.home:
         Navigator.pushReplacementNamed(context, AppRoutes.home);
@@ -293,31 +282,83 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     }
   }
 
-  /// Stores the chosen place in the meeting (edit of the Firestore doc).
-  Future<void> _saveChosenPlace(Meeting place) async {
+  /// Lista de candidatos para la votación. Si la reunión ya tenía una votación
+  /// abierta (el organizador volvió a este paso), se conserva esa lista para
+  /// que los votos ya emitidos sigan apuntando al mismo lugar; solo se agrega
+  /// el lugar elegido si no estaba.
+  List<MeetingCandidate> _voteCandidates(
+      MeetingRecord record, PlaceCandidate chosen) {
+    MeetingCandidate toCandidate(PlaceCandidate p, int index) =>
+        MeetingCandidate(
+          key: 'c$index',
+          name: p.name,
+          category: p.category,
+          lat: p.location.latitude,
+          lng: p.location.longitude,
+        );
+
+    if (record.isVotingOpen && record.candidates.isNotEmpty) {
+      final existing = record.candidates;
+      if (existing.any((c) =>
+          c.name == chosen.name &&
+          c.lat == chosen.location.latitude &&
+          c.lng == chosen.location.longitude)) {
+        return existing;
+      }
+      return [...existing, toCandidate(chosen, existing.length)];
+    }
+    final top = _rankedPlaces.take(_maxVoteCandidates).toList();
+    if (!top.contains(chosen)) top[top.length - 1] = chosen;
+    return [for (var i = 0; i < top.length; i++) toCandidate(top[i], i)];
+  }
+
+  /// Guarda la elección del organizador.
+  ///  - Sin invitados: lugar definido y estado scheduled (como antes).
+  ///  - Con invitados: candidatos + estado pending_votes, y el voto del
+  ///    organizador se registra como un voto más.
+  /// Devuelve el estado de la votación (null si no hay votación).
+  Future<VoteItem?> _saveChoice(PlaceCandidate chosen) async {
     final id = _meetingId;
-    if (id == null) return;
+    if (id == null) return null;
     final record = await MeetingRepository.instance.byId(id);
-    if (record == null) return;
-    await MeetingRepository.instance.save(record.copyWith(
-      placeName: place.placeName,
-      placeCategory: place.timeLabel,
-      status: MeetingRecord.scheduled,
+    if (record == null) return null;
+
+    if (record.invitees.isEmpty) {
+      await MeetingRepository.instance.save(record.copyWith(
+        placeName: chosen.name,
+        placeCategory: chosen.category,
+        status: MeetingRecord.scheduled,
+      ));
+      return null;
+    }
+
+    final candidates = _voteCandidates(record, chosen);
+    final saved = await MeetingRepository.instance.save(record.copyWith(
+      candidates: candidates,
+      status: MeetingRecord.pendingVotes,
     ));
+    final mine = candidates.firstWhere(
+      (c) =>
+          c.name == chosen.name &&
+          c.lat == chosen.location.latitude &&
+          c.lng == chosen.location.longitude,
+      orElse: () => candidates.firstWhere((c) => c.name == chosen.name),
+    );
+    return MeetingVotingService.instance.submitVote(saved, mine);
   }
 
   Future<void> _handleVote() async {
     if (_savingChoice) return;
     if (_recommendations.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Primero carga las recomendaciones y elige un lugar.')));
+          content: Text('Load the recommendations and choose a place first.')));
       return;
     }
     _advanced = true;
     AnalyticsService()
-      ..stepCompleted(MeetingPlanningStep.vote)
+      ..stepCompleted(MeetingPlanningStep.vote, meetingId: _meetingId)
       ..stepViewed(MeetingPlanningStep.result)
-      ..planningCompleted();
+      ..planningCompleted(meetingId: _meetingId);
     // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
     final horaSalida = DateTime.now();
     final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
@@ -327,19 +368,21 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     );
 
     final chosen = _recommendations[_selectedIndex];
+    final chosenPlace = _rankedPlaces[_selectedIndex];
     _reviewTracker.selected(chosen.placeName, meetingId: _meetingId);
 
     setState(() => _savingChoice = true);
-    // Only the organizer writes this choice, so it is safe to queue it while
-    // offline: the sync service uploads it when the network returns.
+    // Only participants write votes; the outbox queues them while offline
+    // and the sync service uploads them when the network returns.
     final offline = (await Connectivity().checkConnectivity())
         .every((r) => r == ConnectivityResult.none);
+    VoteItem? voting;
     try {
-      await _saveChosenPlace(chosen);
+      voting = await _saveChoice(chosenPlace);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('No se pudo guardar el lugar elegido: $e')));
+            content: Text('Could not save the chosen place: $e')));
       }
     } finally {
       if (mounted) setState(() => _savingChoice = false);
@@ -348,17 +391,31 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
 
     final routeArgs = ModalRoute.of(context)?.settings.arguments;
     final args = routeArgs is Map ? routeArgs : const <dynamic, dynamic>{};
+    final votingOpen = voting != null && voting.meeting.isVotingOpen;
     Navigator.pushNamed(context, AppRoutes.winningPlace, arguments: {
       'meetingId': _meetingId,
-      'placeName': chosen.placeName,
+      // Con votación abierta, el lugar aún no es el ganador: se muestra como
+      // "tu voto" y la pantalla indica quién falta por votar.
+      'placeName': votingOpen
+          ? chosen.placeName
+          : (voting?.meeting.placeName ?? chosen.placeName),
       'placeCategory': chosen.timeLabel,
       'placeDetail': chosen.distanceLabel,
       'day': args['day'],
       'time': args['time'],
       'transitMode': args['transitMode'],
       'offline': offline,
+      'participantNames': _participantNames,
+      'votingOpen': votingOpen,
+      'votedCount': voting?.tally.votedCount,
+      'requiredCount': voting?.tally.requiredCount,
+      'missingNames': voting?.tally.missingNames,
     });
   }
+
+  /// "You" más los nombres de los contactos agregados en el paso 1.
+  List<String> get _participantNames =>
+      ['You', for (final c in _invitees) c.displayName];
 
   void _viewRecommendation(int index) {
     setState(() => _selectedIndex = index);
@@ -385,13 +442,9 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: AppDimensions.paddingM),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  EspotiLogo(height: AppDimensions.logoSizeSmall),
-                  Icon(Icons.menu, color: AppColors.primaryBrown),
-                ],
-              ),
+              // Menú hamburguesa real (antes era un ícono sin acción). Antes
+              // de navegar desde el menú se registra el abandono del paso 2.
+              EspotiTopBar(onBeforeNavigate: _recordLeaving),
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.youWillMeet, style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
@@ -420,15 +473,9 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                           style:
                               const TextStyle(color: AppColors.textSecondary),
                         ),
-                      if (_budget != null)
-                        Text(
-                          'Presupuesto compatible: hasta \$${BudgetRecommendationService.formatCop(_budget!)} COP por persona',
-                          style:
-                              const TextStyle(color: AppColors.textSecondary),
-                        ),
                       if (_location != null)
                         Text(
-                          'Punto elegido: ${_location!.latitude.toStringAsFixed(4)}, ${_location!.longitude.toStringAsFixed(4)}',
+                          'Meeting point: ${_location!.latitude.toStringAsFixed(4)}, ${_location!.longitude.toStringAsFixed(4)}',
                           style:
                               const TextStyle(color: AppColors.textSecondary),
                         ),
@@ -436,39 +483,26 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                   ),
                 ),
               const SizedBox(height: AppDimensions.paddingM),
-              const AttendeeAvatars(),
-              if (_participants.isNotEmpty) ...[
-                const SizedBox(height: AppDimensions.paddingS),
-                Text(
-                  'Participantes: ${_participants.map((p) => p.name).join(', ')} (Ana y Luis son simulados)',
-                  style: const TextStyle(
-                      fontSize: 12, color: AppColors.textSecondary),
+              // Participantes reales: el usuario y los contactos que agregó.
+              AttendeeAvatars(count: _participantNames.length),
+              const SizedBox(height: AppDimensions.paddingS),
+              Text(
+                _invitees.isEmpty
+                    ? 'Only you. Add people in step 1 to let them vote too.'
+                    : 'Participants: ${_participantNames.join(', ')}',
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
+              ),
+              if (_invitees.isNotEmpty)
+                const Text(
+                  'Your vote is the first one. The place is decided when every participant has voted.',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
-              ],
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.ourRecommendations,
                   style: _sectionTitleStyle),
               const SizedBox(height: AppDimensions.paddingM),
               if (_location != null) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: SegmentedButton<_StrategyOption>(
-                    showSelectedIcon: false,
-                    segments: const [
-                      ButtonSegment(
-                        value: _StrategyOption.closest,
-                        label: Text('Más cerca'),
-                      ),
-                      ButtonSegment(
-                        value: _StrategyOption.fair,
-                        label: Text('Más justo'),
-                      ),
-                    ],
-                    selected: {_strategyOption},
-                    onSelectionChanged: (selection) =>
-                        _selectStrategy(selection.first),
-                  ),
-                ),
                 const SizedBox(height: AppDimensions.paddingS),
                 Text(
                   _strategy.description,
@@ -476,12 +510,10 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
                       fontSize: 12, color: AppColors.textSecondary),
                 ),
                 _WeatherNote(forecast: _forecast, whenLabel: _meetingWhenLabel),
-                if (_placesSource != _PlacesSource.live)
-                  Text(
-                    _placesSource == _PlacesSource.stored
-                        ? 'Sin conexión con el servicio de lugares: se muestran los lugares guardados en este dispositivo. Se actualizarán al reconectar.'
-                        : 'Sin conexión y sin lugares guardados para esta zona: se muestran lugares de ejemplo. Se actualizarán al reconectar.',
-                    style: const TextStyle(fontSize: 12, color: AppColors.orange),
+                if (_placesSource == _PlacesSource.stored)
+                  const Text(
+                    'The places service is unavailable: showing places saved on this device. They will refresh when you reconnect.',
+                    style: TextStyle(fontSize: 12, color: AppColors.orange),
                   ),
                 const SizedBox(height: AppDimensions.paddingM),
               ],
@@ -497,21 +529,13 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
               else if (_location == null)
                 const _RecommendationsMessage(
                   message:
-                      'Selecciona un punto en el mapa para buscar lugares cercanos.',
+                      'Choose a point on the map to look for nearby places.',
                 )
               else if (_recommendations.isEmpty)
                 const _RecommendationsMessage(
-                  message: 'No encontramos lugares con nombre en esta zona.',
+                  message: 'We could not find named places in this area.',
                 )
               else ...[
-                if (_budgetRelaxed)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: AppDimensions.paddingM),
-                    child: Text(
-                      'Ningún lugar cabe en el presupuesto; mostramos los más económicos.',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
-                  ),
                 for (int i = 0; i < _recommendations.length; i++) ...[
                   _RecommendationCard(
                     meeting: _recommendations[i],
@@ -524,7 +548,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
               const Padding(
                 padding: EdgeInsets.only(top: AppDimensions.paddingS),
                 child: Text(
-                  'Datos de lugares: © OpenStreetMap contributors',
+                  'Place data: © OpenStreetMap contributors',
                   style:
                       TextStyle(fontSize: 11, color: AppColors.textSecondary),
                 ),
@@ -585,16 +609,16 @@ class _WeatherNote extends StatelessWidget {
     final (icon, message) = forecast == null
         ? (
             Icons.cloud_off_outlined,
-            'Clima no disponible: no se ajustó por lluvia.'
+            'Weather unavailable: the list was not adjusted for rain.'
           )
         : forecast.rainLikely
             ? (
                 Icons.umbrella_outlined,
-                'Lluvia probable (${forecast.rainProbability} %) para $whenLabel: los lugares al aire libre bajan en la lista.'
+                'Rain likely (${forecast.rainProbability}%) for $whenLabel: outdoor places move down the list.'
               )
             : (
                 Icons.wb_sunny_outlined,
-                'Sin lluvia probable (${forecast.rainProbability} %) para $whenLabel.'
+                'Rain unlikely (${forecast.rainProbability}%) for $whenLabel.'
               );
 
     return Padding(
@@ -639,7 +663,7 @@ class _RecommendationsMessage extends StatelessWidget {
               TextButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
-                label: const Text('Reintentar'),
+                label: const Text('Retry'),
               ),
           ],
         ),
@@ -691,8 +715,11 @@ class _RecommendationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
+      // Antes la tarjeta tenía alto fijo de 80 px y el nombre/explicación
+      // largos desbordaban ("overflowed by 22 pixels"). Ahora la altura
+      // mínima es 80 y los textos se cortan con elipsis.
       child: Container(
-        height: 80,
+        constraints: const BoxConstraints(minHeight: 80),
         decoration: BoxDecoration(
           color: AppColors.white,
           borderRadius: BorderRadius.circular(AppDimensions.radiusM),
@@ -727,60 +754,46 @@ class _RecommendationCard extends StatelessWidget {
             ),
             const SizedBox(width: AppDimensions.paddingM),
             Expanded(
-              child: Column(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingS),
+                child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     meeting.placeName,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 15,
                       color: AppColors.text,
                     ),
                   ),
-                  const SizedBox(height: AppDimensions.paddingXS),
-                  Row(
-                    children: List.generate(
-                      (meeting.rating ?? 0).round(),
-                      (_) => const Icon(Icons.star,
-                          color: AppColors.orange, size: 16),
-                    ),
-                  ),
+                  // Sin estrellas: OpenStreetMap no da calificaciones (rating
+                  // siempre era null y dejaba una fila vacía).
                   const SizedBox(height: AppDimensions.paddingXS),
                   Text(
-                    meeting.estimatedCostPerPerson == null
-                        ? meeting.distanceLabel
-                        : '${meeting.distanceLabel} • ~\$${BudgetRecommendationService.formatCop(meeting.estimatedCostPerPerson!)} COP',
+                    meeting.distanceLabel,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         fontSize: 12, color: AppColors.textSecondary),
                   ),
                 ],
               ),
+              ),
             ),
+            // Un solo indicador de selección (el botón "ver" repetía la misma
+            // acción que tocar la tarjeta y aportaba ancho extra).
             Padding(
               padding: const EdgeInsets.symmetric(
                   horizontal: AppDimensions.paddingS),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(
-                    selected ? Icons.check_circle : Icons.check_circle_outline,
-                    color:
-                        selected ? AppColors.orange : AppColors.textSecondary,
-                    size: 20,
-                  ),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    onPressed: onTap,
-                    icon: const Icon(
-                      Icons.remove_red_eye_outlined,
-                      color: AppColors.primaryBrown,
-                      size: 18,
-                    ),
-                  ),
-                ],
+              child: Icon(
+                selected ? Icons.check_circle : Icons.check_circle_outline,
+                color: selected ? AppColors.orange : AppColors.textSecondary,
+                size: 22,
               ),
             ),
           ],

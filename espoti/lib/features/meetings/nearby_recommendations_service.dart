@@ -62,7 +62,7 @@ out center tags;
     );
 
     if (response.statusCode != 200) {
-      throw Exception('No fue posible consultar lugares cercanos.');
+      throw Exception('Nearby places could not be loaded.');
     }
 
     // An Overpass answer can be hundreds of KB: decoding it on another
@@ -115,7 +115,7 @@ List<PlaceCandidate> _parseCandidates(String json) {
   final decoded = jsonDecode(json);
   if (decoded is! Map<String, dynamic> || decoded['elements'] is! List) {
     throw const FormatException(
-        'Respuesta inválida del servicio de lugares.');
+        'Invalid response from the places service.');
   }
 
   final candidates = <PlaceCandidate>[];
@@ -134,11 +134,11 @@ List<PlaceCandidate> _parseCandidates(String json) {
       category: tags['leisure'] == 'park'
           ? outdoorCategory
           : switch (tags['amenity']) {
-              'cafe' => 'Cafetería',
-              'restaurant' => 'Restaurante',
-              'fast_food' => 'Comida rápida',
+              'cafe' => 'Cafe',
+              'restaurant' => 'Restaurant',
+              'fast_food' => 'Fast food',
               'bar' || 'pub' => 'Bar',
-              _ => 'Lugar cercano',
+              _ => 'Nearby place',
             },
       location: LatLng(latitude.toDouble(), longitude.toDouble()),
     ));

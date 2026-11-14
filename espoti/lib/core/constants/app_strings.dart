@@ -8,9 +8,7 @@ class AppStrings {
   static const String login = 'Login';
   static const String register = 'Register';
   static const String email = 'Email';
-  static const String confirmEmail = 'Confirm Email';
   static const String password = 'Password';
-  static const String confirmPassword = 'Confirm password';
   static const String forgotPassword = 'Forgot Password?';
   static const String noAccount = "Don't have an account? ";
   static const String haveAccount = 'Already have an account? ';
@@ -18,26 +16,16 @@ class AppStrings {
   static const String signInWithGoogle = 'Sign in with Google';
 
   // Home
-  static const String greeting = 'Hello, Julian';
   static const String createMeeting = 'Create new meeting';
   static const String nextMeetings = 'Next Meetings';
   static const String meetingHistory = 'Meeting History';
   static const String previousEvents = 'Previous Events';
-  static const String inviteCoffee = 'Invite us a coffee';
-  static const String inviteCoffeeSubtitle =
-      'Help us grow, make a contribution.';
-  static const String support = 'Support';
 
   // Profile
-  static const String helloJulian = 'Hello espoti';
   static const String editProfile = 'Edit Profile';
   static const String yourCode = 'Your code';
   static const String preferences = 'Preferences';
   static const String maxRadius = 'Maximum Radius';
-  static const String privacy = 'Privacy';
-  static const String location = 'Location';
-  static const String notification = 'Notification';
-  static const String helpUsGrow = 'Help us grow';
   static const String logOut = 'Log Out';
   static const String deleteAccount = 'Delete account';
 
@@ -63,8 +51,6 @@ class AppStrings {
   static const String whatTime = 'What time?';
   static const String selectYourLocation = 'Select your location';
   static const String schedule = 'Schedule';
-  static const String maxBudgetLabel = 'Maximum budget per person (COP)';
-  static const String maxBudgetHint = 'E.g. 50000 (optional)';
   static const String inviteContacts = 'Invite from Google Contacts';
   static const String selectContacts = 'Select contacts';
   static const String done = 'Done';
@@ -74,7 +60,6 @@ class AppStrings {
   static const String vote = 'Vote';
 
   static const String winningPlace = 'Winning place:';
-  static const String winningPlaceReviews = 'Winning place reviews:';
   static const String back = 'Back';
 
   // Bottom navigation

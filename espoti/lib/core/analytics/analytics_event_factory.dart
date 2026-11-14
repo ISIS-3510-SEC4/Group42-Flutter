@@ -109,4 +109,43 @@ class AnalyticsEventFactory {
         metadata: metadata,
         id: 'meeting_created_$meetingId',
       );
+
+  /// Business question (VV2): planning funnel events. Every event carries the
+  /// planning attempt id in `metadata.attemptId` so one attempt can be
+  /// followed from its first step to its end (completed or abandoned).
+  /// Pass [id] to make the event idempotent (e.g. one end event per attempt).
+  AnalyticsEvent planningEvent(
+    AnalyticsEventType type,
+    String userId, {
+    required String attemptId,
+    required String step,
+    String? meetingId,
+    int? durationMs,
+    Map<String, Object?> metadata = const {},
+    String? id,
+    DateTime? at,
+  }) {
+    final event = _create(
+      type,
+      userId,
+      meetingId: meetingId,
+      step: step,
+      durationMs: durationMs,
+      metadata: {'attemptId': attemptId, ...metadata},
+      id: id,
+    );
+    if (at == null) return event;
+    return AnalyticsEvent(
+      id: event.id,
+      eventType: event.eventType,
+      userId: event.userId,
+      timestamp: at,
+      sessionId: event.sessionId,
+      meetingId: event.meetingId,
+      placeId: event.placeId,
+      step: event.step,
+      durationMs: event.durationMs,
+      metadata: event.metadata,
+    );
+  }
 }

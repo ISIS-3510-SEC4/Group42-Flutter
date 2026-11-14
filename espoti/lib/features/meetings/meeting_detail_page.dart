@@ -3,7 +3,10 @@ import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/services/meeting_repository.dart';
+import '../../core/services/meeting_voting_service.dart';
+import '../../core/widgets/espoti_top_bar.dart';
 import '../../core/widgets/espoti_button.dart';
 import '../../core/widgets/sync_status_banner.dart';
 import '../../models/meeting_record.dart';
@@ -48,7 +51,12 @@ class _MeetingDetailPageState extends State<MeetingDetailPage> {
 
   Future<void> _load() async {
     final id = _meetingId;
-    final meeting = id == null ? null : await MeetingRepository.instance.byId(id);
+    // Reuniones propias desde el repositorio; si no está (el usuario es
+    // invitado), desde las invitaciones del servicio de votación.
+    final meeting = id == null
+        ? null
+        : await MeetingRepository.instance.byId(id) ??
+            await MeetingVotingService.instance.fetchMeeting(id);
     if (!mounted) return;
     setState(() {
       _meeting = meeting;
@@ -78,6 +86,8 @@ class _MeetingDetailPageState extends State<MeetingDetailPage> {
           AppStrings.detail,
           style: TextStyle(color: AppColors.primaryBrown),
         ),
+        // Mismo menú hamburguesa que el resto de pantallas.
+        actions: const [EspotiMenuButton()],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -86,7 +96,7 @@ class _MeetingDetailPageState extends State<MeetingDetailPage> {
                   child: Padding(
                     padding: EdgeInsets.all(AppDimensions.paddingL),
                     child: Text(
-                      'This meeting is not available on this device.',
+                      'This meeting is not available on this device. Check your connection and try again.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: AppColors.textSecondary),
                     ),
@@ -95,10 +105,19 @@ class _MeetingDetailPageState extends State<MeetingDetailPage> {
               : _buildBody(meeting),
     );
 
-    // Active meeting: share location depending on movement (accelerometer).
-    if (meeting == null) return scaffold;
-    return ActiveMeetingLocationSync(meetingId: meeting.id, child: scaffold);
+    // Share location (depending on movement) only for eligible meetings:
+    // the user is a participant and the meeting is inside its time window.
+    if (meeting == null || !_sharesLocation(meeting)) return scaffold;
+    return ActiveMeetingLocationSync(meeting: meeting, child: scaffold);
   }
+
+  bool _isParticipant(MeetingRecord meeting) {
+    final user = AuthService().currentUser;
+    return user != null && meeting.isParticipant(user.uid, user.email);
+  }
+
+  bool _sharesLocation(MeetingRecord meeting) =>
+      _isParticipant(meeting) && meeting.isInLocationWindow(DateTime.now());
 
   Widget _buildBody(MeetingRecord meeting) {
     final pending = MeetingRepository.instance.isPending(meeting.id);
@@ -118,7 +137,22 @@ class _MeetingDetailPageState extends State<MeetingDetailPage> {
             child: const Icon(Icons.map, size: 64, color: AppColors.orange50),
           ),
           const SizedBox(height: AppDimensions.paddingS),
-          LocationSyncStatusLine(meetingId: meeting.id),
+          if (_sharesLocation(meeting)) ...[
+            LocationSyncStatusLine(meetingId: meeting.id),
+            // "Se está moviendo, puede que ya vaya al lugar" cerca de la hora.
+            OnTheWayNotice(
+              meeting: meeting,
+              currentUserId: AuthService().currentUser?.uid,
+            ),
+          ] else
+            Text(
+              meeting.status == MeetingRecord.canceled
+                  ? 'Canceled meeting: location is not shared.'
+                  : 'Your location is only shared from '
+                      '${MeetingRecord.locationWindowBefore.inHours} h before to '
+                      '${MeetingRecord.locationWindowAfter.inHours} h after the meeting time.',
+              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
           const SizedBox(height: AppDimensions.paddingM),
           Text(
             meeting.title,
@@ -159,6 +193,19 @@ class _MeetingDetailPageState extends State<MeetingDetailPage> {
           if (meeting.inviteeNames.isEmpty)
             const Text('No invitees yet.',
                 style: TextStyle(color: AppColors.textSecondary))
+          else if (meeting.invitees.isNotEmpty)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final invitee in meeting.invitees)
+                  _InfoRow(
+                    icon: Icons.mail_outline,
+                    text: invitee.email.isEmpty
+                        ? '${invitee.displayName} · invitation saved (not sent)'
+                        : '${invitee.displayName} (${invitee.email}) · invitation saved (not sent)',
+                  ),
+              ],
+            )
           else
             Wrap(
               spacing: AppDimensions.paddingS,
@@ -173,7 +220,23 @@ class _MeetingDetailPageState extends State<MeetingDetailPage> {
               ],
             ),
           const SizedBox(height: AppDimensions.paddingL),
-          if (meeting.status != MeetingRecord.canceled)
+          if (meeting.isVotingOpen) ...[
+            // Votación abierta: acceso directo a votar / ver el recuento.
+            SizedBox(
+              width: double.infinity,
+              child: EspotiButton(
+                label: 'Open voting',
+                variant: EspotiButtonVariant.secondary,
+                onPressed: () => Navigator.pushNamed(
+                    context, AppRoutes.meetingVoting,
+                    arguments: {'meetingId': meeting.id}),
+              ),
+            ),
+            const SizedBox(height: AppDimensions.paddingM),
+          ],
+          // Solo el organizador puede editar (igual que en las reglas).
+          if (meeting.status != MeetingRecord.canceled &&
+              meeting.organizerId == AuthService().currentUser?.uid)
             SizedBox(
               width: double.infinity,
               child: EspotiButton(

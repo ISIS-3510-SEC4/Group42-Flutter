@@ -3,14 +3,13 @@ import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
-import '../../core/services/meeting_repository.dart';
 import '../../core/widgets/bottom_navigation.dart';
-import '../../core/widgets/espoti_logo.dart';
 import '../../core/widgets/espoti_top_bar.dart';
 import '../../core/widgets/meeting_card.dart';
 import '../../core/widgets/sync_status_banner.dart';
 import '../../models/meeting.dart';
 import '../../models/meeting_record.dart';
+import 'meetings_view_model.dart';
 
 /// The user's meetings, read from Firestore through MeetingRepository
 /// (cache first, works offline with the last saved data).
@@ -22,46 +21,13 @@ class MeetingsPage extends StatefulWidget {
 }
 
 class _MeetingsPageState extends State<MeetingsPage> {
-  MeetingStatus _selectedStatus = MeetingStatus.upcoming;
-  final _repository = MeetingRepository.instance;
-
-  List<MeetingRecord> _meetings = const [];
-  bool _loading = true;
-  bool _stale = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _repository.changes.addListener(_onLocalChange);
-    _load();
-  }
+  // MVVM: all screen state lives in the ViewModel; this State only owns it.
+  final MeetingsViewModel _viewModel = MeetingsViewModel()..start();
 
   @override
   void dispose() {
-    _repository.changes.removeListener(_onLocalChange);
+    _viewModel.dispose();
     super.dispose();
-  }
-
-  void _onLocalChange() => _load();
-
-  Future<void> _load({bool force = false}) async {
-    try {
-      final result = await _repository.myMeetings(forceRefresh: force);
-      if (!mounted) return;
-      setState(() {
-        _meetings = result.meetings;
-        _stale = result.stale;
-        _error = null;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = 'No se pudieron cargar tus reuniones.';
-        _loading = false;
-      });
-    }
   }
 
   void _handleNavTap(EspotiNavItem item) {
@@ -85,10 +51,14 @@ class _MeetingsPageState extends State<MeetingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final meetings =
-        _meetings.where((m) => m.uiStatus(now) == _selectedStatus).toList();
+    return ListenableBuilder(
+      listenable: _viewModel,
+      builder: (context, _) => _buildScaffold(context),
+    );
+  }
 
+  Widget _buildScaffold(BuildContext context) {
+    final meetings = _viewModel.visibleMeetings;
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -112,11 +82,11 @@ class _MeetingsPageState extends State<MeetingsPage> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppDimensions.paddingL),
               child: _StatusTabs(
-                selected: _selectedStatus,
-                onSelected: (status) => setState(() => _selectedStatus = status),
+                selected: _viewModel.selectedStatus,
+                onSelected: _viewModel.selectStatus,
               ),
             ),
-            if (_stale && !_loading)
+            if (_viewModel.stale && !_viewModel.loading)
               const Padding(
                 padding: EdgeInsets.fromLTRB(
                     AppDimensions.paddingL, AppDimensions.paddingS, AppDimensions.paddingL, 0),
@@ -128,7 +98,7 @@ class _MeetingsPageState extends State<MeetingsPage> {
             const SizedBox(height: AppDimensions.paddingM),
             Expanded(
               child: RefreshIndicator(
-                onRefresh: () => _load(force: true),
+                onRefresh: _viewModel.refresh,
                 child: _buildList(meetings),
               ),
             ),
@@ -143,11 +113,14 @@ class _MeetingsPageState extends State<MeetingsPage> {
   }
 
   Widget _buildList(List<MeetingRecord> meetings) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_viewModel.loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-    final message = _error ??
+    final error = _viewModel.error;
+    final message = error ??
         (meetings.isEmpty
-            ? (_selectedStatus == MeetingStatus.upcoming
+            ? (_viewModel.selectedStatus == MeetingStatus.upcoming
                 ? 'No meetings here yet. Tap + to create one.'
                 : 'No meetings here yet')
             : null);
@@ -162,10 +135,10 @@ class _MeetingsPageState extends State<MeetingsPage> {
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: AppColors.textSecondary)),
           ),
-          if (_error != null)
+          if (error != null)
             Center(
               child: TextButton(
-                onPressed: () => _load(force: true),
+                onPressed: _viewModel.refresh,
                 child: const Text('Retry'),
               ),
             ),
@@ -181,7 +154,7 @@ class _MeetingsPageState extends State<MeetingsPage> {
       itemBuilder: (context, index) {
         final meeting = meetings[index];
         final canceled = meeting.status == MeetingRecord.canceled;
-        final pending = _repository.isPending(meeting.id);
+        final pending = _viewModel.isPending(meeting.id);
 
         Widget? bottomWidget;
         if (canceled) {
@@ -197,6 +170,27 @@ class _MeetingsPageState extends State<MeetingsPage> {
               'Canceled',
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
+          );
+        } else if (meeting.isVotingOpen) {
+          // Votación abierta: se indica en la tarjeta (el detalle da acceso).
+          bottomWidget = const Row(
+            children: [
+              Icon(Icons.how_to_vote_outlined, size: 16, color: AppColors.orange),
+              SizedBox(width: 4),
+              Text('Voting in progress',
+                  style: TextStyle(fontSize: 12, color: AppColors.orange)),
+            ],
+          );
+        } else if (_viewModel.isInvited(meeting)) {
+          // Reunión de otra persona: el usuario es invitado (no la puede
+          // editar, pero sí ver el detalle y compartir ubicación).
+          bottomWidget = const Row(
+            children: [
+              Icon(Icons.mail_outline, size: 16, color: AppColors.textSecondary),
+              SizedBox(width: 4),
+              Text('You are invited',
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            ],
           );
         } else if (pending) {
           bottomWidget = const Row(

@@ -57,7 +57,7 @@ class WeatherService {
     ));
 
     if (response.statusCode != 200) {
-      throw Exception('No fue posible consultar el clima.');
+      throw Exception('The weather could not be loaded.');
     }
 
     final decoded = jsonDecode(response.body);
@@ -66,7 +66,7 @@ class WeatherService {
     final probabilities =
         hourly is Map ? hourly['precipitation_probability'] : null;
     if (times is! List || probabilities is! List) {
-      throw const FormatException('Respuesta inválida del servicio de clima.');
+      throw const FormatException('Invalid response from the weather service.');
     }
 
     for (var i = 0; i < times.length && i < probabilities.length; i++) {
@@ -79,7 +79,7 @@ class WeatherService {
         return forecast;
       }
     }
-    throw StateError('Hora fuera del pronóstico disponible.');
+    throw StateError('Time outside the available forecast.');
   }
 
   void close() => _client.close();

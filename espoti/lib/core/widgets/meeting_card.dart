@@ -33,6 +33,20 @@ class MeetingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final card = _buildCard();
+    // La versión compacta (Home) no tiene botón "Detail": toda la tarjeta
+    // abre el detalle.
+    if (compact && onDetail != null) {
+      return InkWell(
+        onTap: onDetail,
+        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
+        child: card,
+      );
+    }
+    return card;
+  }
+
+  Widget _buildCard() {
     return Container(
       width: compact ? null : double.infinity,
       padding: const EdgeInsets.all(AppDimensions.paddingM),
@@ -51,6 +65,7 @@ class MeetingCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   placeName,
+                  maxLines: 1,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 15,
@@ -66,13 +81,20 @@ class MeetingCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: AppDimensions.paddingXS),
+          // En la tarjeta compacta (alto fijo en Home) cada línea ocupa una
+          // sola fila con elipsis: antes un texto largo se partía en dos
+          // líneas y la tarjeta se desbordaba por abajo.
           Text(
             line1,
+            maxLines: compact ? 1 : 2,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
           if (line2.isNotEmpty)
             Text(
               line2,
+              maxLines: compact ? 1 : 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
           const SizedBox(height: AppDimensions.paddingS),

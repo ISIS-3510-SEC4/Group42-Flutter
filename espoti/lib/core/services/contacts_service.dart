@@ -33,7 +33,7 @@ class ContactsService {
 
       if (account == null) {
         throw const ContactsException(
-          'Inicia sesión con Google para acceder a tus contactos.',
+          'Sign in with Google to access your contacts.',
         );
       }
 
@@ -46,20 +46,22 @@ class ContactsService {
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         throw const ContactsException(
-          'Necesitamos tu permiso para leer tus contactos de Google.',
+          'We need your permission to read your Google contacts.',
           permissionDenied: true,
         );
       }
       throw const ContactsException(
-          'No se pudo autorizar el acceso a tus contactos de Google.');
+          'Access to your Google contacts could not be authorized.');
     }
   }
 
-  /// Fetches contacts that have an email address, sorted by name.
+  /// Fetches contacts that have an email address or a phone number, sorted by
+  /// name. (Se piden también los teléfonos: el permiso contacts.readonly ya
+  /// los incluye, no hace falta un permiso nuevo.)
   Future<List<GoogleContact>> fetchContacts() async {
     // Authenticate Actors: only signed-in Espoti users can read contacts.
     if (!AuthService().isAuthenticated) {
-      throw const ContactsException('Inicia sesión para invitar contactos.');
+      throw const ContactsException('Log in to invite contacts.');
     }
 
     var token = await _accessToken();
@@ -69,7 +71,7 @@ class ContactsService {
 
     for (var page = 0; page < 5; page++) {
       final uri = Uri.https('people.googleapis.com', '/v1/people/me/connections', {
-        'personFields': 'names,emailAddresses,photos',
+        'personFields': 'names,emailAddresses,phoneNumbers,photos',
         'pageSize': '200',
         'sortOrder': 'FIRST_NAME_ASCENDING',
         if (pageToken != null) 'pageToken': pageToken,
@@ -84,7 +86,7 @@ class ContactsService {
           debugPrint('CONTACTS STATUS: ${response.statusCode}');
       } catch (_) {
         throw const ContactsException(
-            'Error de conexión al cargar tus contactos.');
+            'Connection error while loading your contacts.');
       }
 
       if (response.statusCode == 401 && !retried) {
@@ -95,16 +97,16 @@ class ContactsService {
       }
       if (response.statusCode == 403) {
         throw const ContactsException(
-            'Google denegó el acceso a los contactos. Revisa que la People API esté habilitada.',
+            'Google denied access to your contacts. Check that the People API is enabled.',
             permissionDenied: true);
       }
       if (response.statusCode != 200) {
-        throw const ContactsException('No se pudieron cargar tus contactos.');
+        throw const ContactsException('Your contacts could not be loaded.');
       }
 
       final decoded = jsonDecode(response.body);
       if (decoded is! Map<String, dynamic>) {
-        throw const ContactsException('Respuesta inválida de Google Contacts.');
+        throw const ContactsException('Invalid response from Google Contacts.');
       }
       for (final person in (decoded['connections'] as List? ?? const [])) {
         final contact = _parse(person);
@@ -123,9 +125,17 @@ class ContactsService {
     if (person is! Map) return null;
     final emails = person['emailAddresses'];
     final email = (emails is List && emails.isNotEmpty && emails.first is Map)
-        ? (emails.first as Map)['value'] as String?
-        : null;
-    if (email == null || email.isEmpty) return null;
+        ? ((emails.first as Map)['value'] as String? ?? '').trim()
+        : '';
+    final phones = person['phoneNumbers'];
+    final phone = (phones is List && phones.isNotEmpty && phones.first is Map)
+        ? (((phones.first as Map)['canonicalForm'] ??
+                    (phones.first as Map)['value']) as String? ??
+                '')
+            .trim()
+        : '';
+    // Sin correo ni celular no hay cómo identificar al contacto.
+    if (email.isEmpty && phone.isEmpty) return null;
 
     final names = person['names'];
     final name = (names is List && names.isNotEmpty && names.first is Map)
@@ -137,9 +147,10 @@ class ContactsService {
         : '';
 
     return GoogleContact(
-      id: person['resourceName'] as String? ?? email,
+      id: person['resourceName'] as String? ?? (email.isNotEmpty ? email : phone),
       name: name,
       email: email,
+      phone: phone,
       photoUrl: photo,
     );
   }

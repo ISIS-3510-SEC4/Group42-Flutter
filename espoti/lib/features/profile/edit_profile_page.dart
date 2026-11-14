@@ -3,10 +3,11 @@ import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/constants/input_limits.dart';
 import '../../core/widgets/avatar_selector.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_button.dart';
-import '../../core/widgets/espoti_logo.dart';
+import '../../core/widgets/espoti_top_bar.dart';
 import '../../core/widgets/espoti_text_field.dart';
 import '../../core/widgets/preference_selector.dart';
 import '../../core/services/auth_service.dart';
@@ -32,6 +33,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   String? _lastNameError;
   String? _emailError;
   String? _preferencesError;
+  String? _descriptionError;
   bool _isLoading = false;
 
   @override
@@ -44,7 +46,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _emailController = TextEditingController(text: user.email);
     _descriptionController = TextEditingController(text: user.description);
 
-    _avatarUrl = user.avatarUrl.isNotEmpty ? user.avatarUrl : 'https://i.pravatar.cc/200?img=13';
+    // Default: the Espoti mascot preset, not a photo of a random person.
+    _avatarUrl = user.avatarUrl.isNotEmpty
+        ? user.avatarUrl
+        : AvatarSelector.presetAvatars.first;
     _selectedPreferences = List<String>.from(user.preferences);
   }
 
@@ -82,15 +87,26 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final isValidDomain = email.isEmpty || AuthService.isValidEmailDomain(email);
 
     setState(() {
-      _firstNameError = _firstNameController.text.trim().isEmpty ? 'El nombre es obligatorio' : null;
-      _lastNameError = _lastNameController.text.trim().isEmpty ? 'El apellido es obligatorio' : null;
-      _emailError = !isValidDomain ? 'Ingresa un correo con un dominio válido (ej. usuario@dominio.com)' : null;
-      _preferencesError = _selectedPreferences.isEmpty ? 'Selecciona al menos una preferencia' : null;
+      // Mismos límites que muestra la interfaz (InputLimits).
+      final first = _firstNameController.text.trim();
+      final last = _lastNameController.text.trim();
+      _firstNameError = first.isEmpty
+          ? 'Name is required'
+          : InputLimits.tooLong(first, InputLimits.firstName, 'Name');
+      _lastNameError = last.isEmpty
+          ? 'Last name is required'
+          : InputLimits.tooLong(last, InputLimits.lastName, 'Last name');
+      _emailError = InputLimits.tooLong(email, InputLimits.email, 'Email') ??
+          (!isValidDomain ? 'Enter an email with a valid domain (e.g., user@domain.com)' : null);
+      _descriptionError = InputLimits.tooLong(_descriptionController.text.trim(),
+          InputLimits.description, 'Description');
+      _preferencesError = _selectedPreferences.isEmpty ? 'Select at least one preference' : null;
     });
 
     final isValid = _firstNameError == null &&
         _lastNameError == null &&
         _emailError == null &&
+        _descriptionError == null &&
         _preferencesError == null;
 
     if (!isValid) return;
@@ -117,7 +133,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Perfil actualizado correctamente'),
+            content: Text('Profile updated'),
             backgroundColor: AppColors.orange,
           ),
         );
@@ -127,7 +143,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al guardar: $e'),
+            content: Text('Could not save: $e'),
             backgroundColor: Colors.red.shade700,
           ),
         );
@@ -150,13 +166,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: AppDimensions.paddingM),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  EspotiLogo(height: AppDimensions.logoSizeSmall),
-                  Icon(Icons.menu, color: AppColors.primaryBrown),
-                ],
-              ),
+              // Menú hamburguesa real (antes era un ícono sin acción).
+              const EspotiTopBar(),
               const SizedBox(height: AppDimensions.paddingL),
               Text(
                 AppStrings.editProfileTitle,
@@ -171,20 +182,23 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
               const SizedBox(height: AppDimensions.paddingL),
               EspotiTextField(
-                label: 'Nombre',
+                label: 'Name',
                 controller: _firstNameController,
                 errorText: _firstNameError,
+                maxLength: InputLimits.firstName,
               ),
               EspotiTextField(
-                label: 'Apellido',
+                label: 'Last Name',
                 controller: _lastNameController,
                 errorText: _lastNameError,
+                maxLength: InputLimits.lastName,
               ),
               EspotiTextField(
                 label: AppStrings.email,
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 errorText: _emailError,
+                maxLength: InputLimits.email,
               ),
               const SizedBox(height: AppDimensions.paddingS),
               PreferenceSelector(
@@ -202,6 +216,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 label: AppStrings.description,
                 controller: _descriptionController,
                 hintText: AppStrings.writeSomethingFun,
+                maxLength: InputLimits.description,
+                showCounter: true,
+                errorText: _descriptionError,
               ),
               const SizedBox(height: AppDimensions.paddingL),
               Center(

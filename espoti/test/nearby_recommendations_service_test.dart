@@ -51,9 +51,9 @@ void main() {
       'One hundred meters away',
     ]);
     expect(places.map((place) => place.distanceLabel), [
-      '0 m del punto elegido',
-      '40 m del punto elegido',
-      '100 m del punto elegido',
+      '0 m from the chosen point',
+      '40 m from the chosen point',
+      '100 m from the chosen point',
     ]);
   });
 

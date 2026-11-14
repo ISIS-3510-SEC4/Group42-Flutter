@@ -8,25 +8,25 @@ void main() {
     test('translates user-not-found properly', () {
       final exception = FirebaseAuthException(code: 'user-not-found');
       final message = AuthService.getReadableAuthError(exception);
-      expect(message, 'No existe ninguna cuenta con este correo electrónico.');
+      expect(message, 'There is no account with this email.');
     });
 
     test('translates invalid-credential properly', () {
       final exception = FirebaseAuthException(code: 'invalid-credential');
       final message = AuthService.getReadableAuthError(exception);
-      expect(message, 'Credenciales inválidas. Revisa tu correo y contraseña.');
+      expect(message, 'Invalid credentials. Check your email and password.');
     });
 
     test('translates email-already-in-use properly', () {
       final exception = FirebaseAuthException(code: 'email-already-in-use');
       final message = AuthService.getReadableAuthError(exception);
-      expect(message, 'Este correo ya está registrado en la base de datos.');
+      expect(message, 'This email is already registered.');
     });
 
     test('translates weak-password properly', () {
       final exception = FirebaseAuthException(code: 'weak-password');
       final message = AuthService.getReadableAuthError(exception);
-      expect(message, 'La contraseña es muy débil. Debe tener al menos 6 caracteres.');
+      expect(message, 'The password is too weak. It must have at least 6 characters.');
     });
 
     test('falls back to custom message or default on unknown code', () {

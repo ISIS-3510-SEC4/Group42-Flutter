@@ -135,39 +135,79 @@ class LocalStore {
   // DOMAIN STORAGE: RECENT PLACES & CACHED SEARCHES
   // ===========================================================================
 
+  // Si SQLite no está disponible (falla al abrir la base, o en pruebas sin
+  // sqflite), los lugares recientes se guardan en SharedPreferences como el
+  // resto de datos de este store, en lugar de perderse.
+  static const String _recentPlacesKey = 'espoti_recent_places_v1';
+  static const int _recentPlacesMax = 50;
+
+  Future<bool> _sqliteAvailable() async {
+    try {
+      return await _db.database != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _readRecentFallback() async {
+    final raw = await readJson(_recentPlacesKey);
+    if (raw is! List) return [];
+    return [for (final e in raw) if (e is Map) Map<String, dynamic>.from(e)];
+  }
+
   /// Saves a place suggestion into the persistent search cache.
   Future<void> saveRecentPlace(PlaceSuggestion place, {String? query, String? category}) async {
     try {
-      await _db.saveRecentPlace(place, query: query, category: category);
+      if (await _sqliteAvailable()) {
+        await _db.saveRecentPlace(place, query: query, category: category);
+        return;
+      }
     } catch (e) {
       debugPrint('LocalStore: SQLite saveRecentPlace error: $e');
     }
+    final list = (await _readRecentFallback())
+        .where((e) => PlaceSuggestion.fromJson(e) != place)
+        .toList();
+    list.insert(0, {...place.toJson(), 'query': query ?? '', 'category': category});
+    await writeJson(_recentPlacesKey, list.take(_recentPlacesMax).toList());
   }
 
   /// Retrieves recent places from the persistent search cache.
   Future<List<PlaceSuggestion>> getRecentPlaces({int limit = 10}) async {
     try {
-      return await _db.getRecentPlaces(limit: limit);
+      if (await _sqliteAvailable()) return await _db.getRecentPlaces(limit: limit);
     } catch (e) {
       debugPrint('LocalStore: SQLite getRecentPlaces error: $e');
-      return [];
     }
+    return (await _readRecentFallback())
+        .take(limit)
+        .map(PlaceSuggestion.fromJson)
+        .toList();
   }
 
   /// Searches previously cached places matching [query] offline.
   Future<List<PlaceSuggestion>> searchCachedPlaces(String query, {int limit = 10}) async {
     try {
-      return await _db.searchCachedPlaces(query, limit: limit);
+      if (await _sqliteAvailable()) {
+        return await _db.searchCachedPlaces(query, limit: limit);
+      }
     } catch (e) {
       debugPrint('LocalStore: SQLite searchCachedPlaces error: $e');
-      return [];
     }
+    final q = query.trim().toLowerCase();
+    return (await _readRecentFallback())
+        .where((e) => [e['query'], e['title'], e['subtitle']]
+            .any((v) => v is String && v.toLowerCase().contains(q)))
+        .take(limit)
+        .map(PlaceSuggestion.fromJson)
+        .toList();
   }
 
   Future<void> clearRecentPlaces() async {
     try {
       await _db.clearRecentPlaces();
     } catch (_) {}
+    await remove(_recentPlacesKey);
   }
 
   // ===========================================================================
@@ -285,6 +325,18 @@ class LocalStore {
       final prefs = await _prefs;
       await prefs.setDouble('last_known_gps_lat', lat);
       await prefs.setDouble('last_known_gps_lng', lng);
+    } catch (_) {}
+  }
+
+  /// Removes the last known position (called on sign-out).
+  Future<void> clearLastLocation() async {
+    try {
+      await _db.clearLastLocation();
+    } catch (_) {}
+    try {
+      final prefs = await _prefs;
+      await prefs.remove('last_known_gps_lat');
+      await prefs.remove('last_known_gps_lng');
     } catch (_) {}
   }
 

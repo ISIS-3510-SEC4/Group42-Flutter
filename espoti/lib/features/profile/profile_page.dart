@@ -88,7 +88,10 @@ class ProfilePage extends StatelessWidget {
                         radius: 36,
                         backgroundColor: AppColors.mauve30,
                         child: ClipOval(
-                          child: Image.network(
+                          child: user.avatarUrl.isEmpty
+                              ? const Icon(Icons.person,
+                                  size: 36, color: AppColors.primaryBrown)
+                              : Image.network(
                             user.avatarUrl,
                             width: 72,
                             height: 72,
@@ -145,13 +148,13 @@ class ProfilePage extends StatelessWidget {
                   const SizedBox(height: AppDimensions.paddingL),
                   _InfoRow(
                       label: AppStrings.preferences,
-                      value: user.preferences.join(', ')),
+                      value: user.preferences.isEmpty
+                          ? 'Not set'
+                          : user.preferences.join(', ')),
                   const SizedBox(height: AppDimensions.paddingS),
                   _InfoRow(
                       label: AppStrings.maxRadius,
                       value: '${user.maxRadiusKm} km'),
-                  const SizedBox(height: AppDimensions.paddingL),
-                  const _InviteCoffeeCard(),
                   const SizedBox(height: AppDimensions.paddingL),
                   const _SettingsList(),
                   const SizedBox(height: AppDimensions.paddingL),
@@ -204,103 +207,36 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-class _InviteCoffeeCard extends StatelessWidget {
-  const _InviteCoffeeCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(AppDimensions.paddingM),
-      decoration: BoxDecoration(
-        color: AppColors.orange50,
-        borderRadius: BorderRadius.circular(AppDimensions.radiusL),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.coffee, color: AppColors.primaryBrown, size: 28),
-          const SizedBox(width: AppDimensions.paddingM),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  AppStrings.inviteCoffee,
-                  style: TextStyle(
-                      fontWeight: FontWeight.w700, color: AppColors.text),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  AppStrings.inviteCoffeeSubtitle,
-                  style:
-                      TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppDimensions.paddingS),
-          ElevatedButton(
-            onPressed: null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryBrown,
-              foregroundColor: AppColors.white,
-              minimumSize: const Size(0, 36),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
-              ),
-            ),
-            child:
-                const Text(AppStrings.support, style: TextStyle(fontSize: 12)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
+/// Opciones del perfil. Se quitaron "Privacy", "Location", "Notification"
+/// y "Help us grow" (no tenían ninguna acción) y la tarjeta "Invite us a
+/// coffee". Quedan los accesos a las analíticas y cerrar sesión.
 class _SettingsList extends StatelessWidget {
   const _SettingsList();
+
+  Widget _tile(BuildContext context, IconData icon, String title,
+          String subtitle, String route) =>
+      ListTile(
+        onTap: () => Navigator.pushNamed(context, route),
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(icon, color: AppColors.orange),
+        title: Text(title,
+            style: const TextStyle(color: AppColors.text, fontWeight: FontWeight.bold)),
+        subtitle: Text(subtitle,
+            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+      );
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Direct link to BQ5 Analytics
-        ListTile(
-          onTap: () => Navigator.pushNamed(context, AppRoutes.bq5Analytics),
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.analytics_outlined, color: AppColors.orange),
-          title: const Text(
-            'Analíticas BQ Tipo 5',
-            style: TextStyle(color: AppColors.text, fontWeight: FontWeight.bold),
-          ),
-          subtitle: const Text(
-            'Tasa de aceptación y patrones de recomendación',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-          ),
-          trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-        ),
+        _tile(context, Icons.sensors, 'Motion sensor',
+            'Live accelerometer reading', AppRoutes.motionSensor),
+        _tile(context, Icons.analytics_outlined, 'Analytics BQ Type 5',
+            'Recommendation acceptance rate and patterns', AppRoutes.bq5Analytics),
+        _tile(context, Icons.insights_outlined, 'Analytics dashboard',
+            'Planning abandonment + meeting peaks (live)', AppRoutes.analyticsDashboard),
         const Divider(height: 1, color: AppColors.mauve30),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.lock_outline, color: AppColors.primaryBrown),
-          title: const Text(AppStrings.privacy, style: TextStyle(color: AppColors.text)),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.location_on_outlined, color: AppColors.primaryBrown),
-          title: const Text(AppStrings.location, style: TextStyle(color: AppColors.text)),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.notifications_none, color: AppColors.primaryBrown),
-          title: const Text(AppStrings.notification, style: TextStyle(color: AppColors.text)),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.favorite_border, color: AppColors.primaryBrown),
-          title: const Text(AppStrings.helpUsGrow, style: TextStyle(color: AppColors.text)),
-        ),
         ListTile(
           onTap: () async {
             await AuthService().signOut();

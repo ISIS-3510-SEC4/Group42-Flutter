@@ -1,18 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/constants/input_limits.dart';
 import '../../core/widgets/avatar_selector.dart';
 import '../../core/widgets/espoti_button.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../core/widgets/espoti_text_field.dart';
-import '../../core/widgets/preference_selector.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/user_service.dart';
 import '../../core/offline/connectivity_service.dart';
 import '../../models/user.dart';
 
+/// Registro con correo y contraseña.
+///
+/// Solo pide los cinco datos acordados (nombre, apellido, correo, contraseña
+/// y teléfono). Avatar, preferencias y las confirmaciones de correo y
+/// contraseña se quitaron del formulario; el usuario puede completar avatar y
+/// preferencias después desde "Edit Profile". También se puede entrar con
+/// Google, que crea el mismo documento users/{uid}.
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
@@ -25,22 +33,14 @@ class _RegisterPageState extends State<RegisterPage> {
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  final _confirmEmailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
   final _authService = AuthService();
-
-  String _avatarUrl = 'https://images.pexels.com/photos/39987037/pexels-photo-39987037.jpeg';
-  List<String> _selectedPreferences = ['Walk', 'Eat'];
 
   String? _firstNameError;
   String? _lastNameError;
   String? _phoneError;
   String? _emailError;
-  String? _confirmEmailError;
   String? _passwordError;
-  String? _confirmPasswordError;
-  String? _preferencesError;
   bool _isLoading = false;
 
   @override
@@ -49,19 +49,16 @@ class _RegisterPageState extends State<RegisterPage> {
     _lastNameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
-    _confirmEmailController.dispose();
     _passwordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
-
 
   /// Registration is a protected view: Firebase Auth needs the network.
   Future<bool> _ensureOnline() async {
     if (await ConnectivityService.instance.check()) return true;
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Sin conexión. Conéctate a internet para registrarte.'),
+        content: const Text('No connection. Connect to the internet to sign up.'),
         backgroundColor: Colors.red.shade700,
       ));
     }
@@ -74,7 +71,7 @@ class _RegisterPageState extends State<RegisterPage> {
     setState(() => _isLoading = true);
     try {
       final credential = await _authService.signInWithGoogle();
-      if (credential == null) return; // user cancelled: stay on login
+      if (credential == null) return; // user cancelled: stay on this screen
       await UserService().init();
       if (mounted) {
         Navigator.pushReplacementNamed(context, AppRoutes.home);
@@ -95,65 +92,55 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  Future<void> _handleRegister() async {
+  /// Valida los cinco campos con los mismos límites que se aplican en la
+  /// interfaz ([InputLimits]); el límite superior también se comprueba aquí
+  /// por si el texto llega por otra vía (por ejemplo, pegado).
+  bool _validate() {
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    final phone = _phoneController.text.trim();
     final email = _emailController.text.trim();
-    final isValidDomain = AuthService.isValidEmailDomain(email);
+    final password = _passwordController.text;
 
     setState(() {
-      _firstNameError = _firstNameController.text.trim().isEmpty
-          ? 'Your Name is required'
-          : null;
-      _lastNameError = _lastNameController.text.trim().isEmpty
-          ? 'Last Name is required'
-          : null;
-      _phoneError = _phoneController.text.trim().isEmpty
-          ? 'Phone Number is required'
-          : null;
-
-      if (email.isEmpty) {
-        _emailError = 'Email is required';
-      } else if (!isValidDomain) {
-        _emailError = 'Please enter a valid email address (e.g., user@domain.com)';
-      } else {
-        _emailError = null;
-      }
-
-      _confirmEmailError = _confirmEmailController.text.trim() != email
-          ? 'Emails do not match'
-          : null;
-
-      _passwordError = _passwordController.text.isEmpty
+      _firstNameError = firstName.isEmpty
+          ? 'Name is required'
+          : InputLimits.tooLong(firstName, InputLimits.firstName, 'Name');
+      _lastNameError = lastName.isEmpty
+          ? 'Last name is required'
+          : InputLimits.tooLong(lastName, InputLimits.lastName, 'Last name');
+      _phoneError = phone.isEmpty
+          ? 'Phone number is required'
+          : (phone.length < InputLimits.phoneMin ||
+                  phone.length > InputLimits.phoneMax)
+              ? 'Phone number must have ${InputLimits.phoneMin} to ${InputLimits.phoneMax} digits'
+              : null;
+      _emailError = email.isEmpty
+          ? 'Email is required'
+          : InputLimits.tooLong(email, InputLimits.email, 'Email') ??
+              (AuthService.isValidEmailDomain(email)
+                  ? null
+                  : 'Please enter a valid email address (e.g., user@domain.com)');
+      _passwordError = password.isEmpty
           ? 'Password is required'
-          : (_passwordController.text.length < 6
-              ? 'Password must be at least 6 characters long'
-              : null);
-
-      _confirmPasswordError = _confirmPasswordController.text != _passwordController.text
-          ? 'Passwords do not match'
-          : null;
-
-      _preferencesError = _selectedPreferences.isEmpty
-          ? 'Select at least one preference'
-          : null;
-
-      _phoneError = _phoneController.text.trim().isEmpty
-          ? 'Phone Number is required'
-          : null;
+          : password.length < InputLimits.passwordMin
+              ? 'Password must be at least ${InputLimits.passwordMin} characters long'
+              : InputLimits.tooLong(password, InputLimits.passwordMax, 'Password');
     });
 
-    final isValid = _firstNameError == null &&
+    return _firstNameError == null &&
         _lastNameError == null &&
         _phoneError == null &&
         _emailError == null &&
-        _confirmEmailError == null &&
-        _passwordError == null &&
-        _confirmPasswordError == null &&
-        _preferencesError == null;
+        _passwordError == null;
+  }
 
-    if (!isValid) return;
+  Future<void> _handleRegister() async {
+    if (_isLoading || !_validate()) return;
     if (!await _ensureOnline()) return;
 
     setState(() => _isLoading = true);
+    final email = _emailController.text.trim();
 
     try {
       final credential = await _authService.registerWithEmailAndPassword(
@@ -162,20 +149,20 @@ class _RegisterPageState extends State<RegisterPage> {
       );
 
       final uid = credential.user!.uid;
-      final code = 'ESP${(uid.hashCode % 9000 + 1000).abs()}';
       final firstName = _firstNameController.text.trim();
       final lastName = _lastNameController.text.trim();
-      final phone = _phoneController.text.trim();
+      // Perfil inicial solo con los datos del formulario. Los campos que ya
+      // no se piden quedan vacíos (no se inventan ciudad ni preferencias).
       final newUser = AppUser(
         firstName: firstName,
         lastName: lastName,
-        phone: phone,
+        phone: _phoneController.text.trim(),
         name: '$firstName $lastName'.trim(),
-        code: code,
-        location: 'Bogotá D.C.',
-        preferences: _selectedPreferences,
+        code: 'ESP${(uid.hashCode % 9000 + 1000).abs()}',
+        location: '',
+        preferences: const [],
         maxRadiusKm: 10,
-        avatarUrl: _avatarUrl,
+        avatarUrl: AvatarSelector.presetAvatars.first,
         email: email,
         description: '',
       );
@@ -188,8 +175,8 @@ class _RegisterPageState extends State<RegisterPage> {
     } catch (e) {
       if (mounted) {
         final errorMsg = e.toString();
-        // If the error indicates email already exists, highlight it on the email field
-        if (errorMsg.contains('ya está registrado')) {
+        // Si el correo ya existe, el error se marca también en ese campo.
+        if (errorMsg.contains('already registered')) {
           setState(() => _emailError = errorMsg);
         }
         ScaffoldMessenger.of(context).showSnackBar(
@@ -221,64 +208,48 @@ class _RegisterPageState extends State<RegisterPage> {
             children: [
               const Center(child: EspotiLogo(height: AppDimensions.logoSizeMedium)),
               const SizedBox(height: AppDimensions.paddingL),
-              Center(
-                child: AvatarSelector(
-                  currentAvatarUrl: _avatarUrl,
-                  onAvatarChanged: (url) => setState(() => _avatarUrl = url),
-                ),
-              ),
-              const SizedBox(height: AppDimensions.paddingM),
               EspotiTextField(
                 label: 'Name',
                 controller: _firstNameController,
                 errorText: _firstNameError,
+                maxLength: InputLimits.firstName,
+                textInputAction: TextInputAction.next,
               ),
               EspotiTextField(
                 label: 'Last Name',
                 controller: _lastNameController,
                 errorText: _lastNameError,
-              ),
-
-              EspotiTextField(
-                label: 'Phone',
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                errorText: _phoneError,
+                maxLength: InputLimits.lastName,
+                textInputAction: TextInputAction.next,
               ),
               EspotiTextField(
                 label: AppStrings.email,
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 errorText: _emailError,
-              ),
-              EspotiTextField(
-                label: AppStrings.confirmEmail,
-                controller: _confirmEmailController,
-                keyboardType: TextInputType.emailAddress,
-                errorText: _confirmEmailError,
+                maxLength: InputLimits.email,
+                textInputAction: TextInputAction.next,
               ),
               EspotiTextField(
                 label: AppStrings.password,
                 controller: _passwordController,
                 obscureText: true,
                 errorText: _passwordError,
+                maxLength: InputLimits.passwordMax,
+                hintText: 'At least ${InputLimits.passwordMin} characters',
+                textInputAction: TextInputAction.next,
               ),
               EspotiTextField(
-                label: AppStrings.confirmPassword,
-                controller: _confirmPasswordController,
-                obscureText: true,
-                errorText: _confirmPasswordError,
-              ),
-              const SizedBox(height: AppDimensions.paddingS),
-              PreferenceSelector(
-                selectedPreferences: _selectedPreferences,
-                onPreferencesChanged: (prefs) {
-                  setState(() {
-                    _selectedPreferences = prefs;
-                    _preferencesError = null;
-                  });
-                },
-                errorText: _preferencesError,
+                label: 'Phone Number',
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                errorText: _phoneError,
+                maxLength: InputLimits.phoneMax,
+                // Solo dígitos: el límite de longitud es de dígitos reales.
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                hintText: 'Digits only',
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _handleRegister(),
               ),
               const SizedBox(height: AppDimensions.paddingL),
               EspotiButton(
@@ -290,8 +261,8 @@ class _RegisterPageState extends State<RegisterPage> {
               const SizedBox(height: AppDimensions.paddingL),
               _SocialIconsRow(onGoogleTap: _handleGoogleLogin),
               const SizedBox(height: AppDimensions.paddingL),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
                 children: [
                   const Text(
                     AppStrings.haveAccount,
@@ -317,9 +288,8 @@ class _RegisterPageState extends State<RegisterPage> {
       ),
     );
   }
-  
-
 }
+
 class _SocialIconsRow extends StatelessWidget {
   final VoidCallback onGoogleTap;
 

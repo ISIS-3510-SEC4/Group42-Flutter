@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_ce_flutter/hive_ce_flutter.dart';
 import 'package:sqflite/sqflite.dart';
@@ -9,11 +12,18 @@ import 'app/app.dart';
 
 import 'app/routes.dart';
 import 'core/offline/sync_service.dart';
+import 'core/services/analytics_service.dart';
 import 'core/services/auth_service.dart';
 import 'core/services/user_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // La app solo funciona en vertical: se bloquea la rotación a horizontal
+  // (también está declarado en AndroidManifest.xml e Info.plist).
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
 
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -28,6 +38,10 @@ void main() async {
     SyncService.instance.start(),
     UserService().init(awaitRemote: false),
   ]);
+
+  // Planning funnel (VV2): an attempt left open when the app was closed is
+  // recorded as abandoned at its last step. Runs after the outbox is loaded.
+  unawaited(AnalyticsService().recoverInterruptedAttempt());
 
   final initialRoute =
       AuthService().isAuthenticated ? AppRoutes.home : AppRoutes.welcome;

@@ -35,6 +35,7 @@ class MeetingLocationService {
     String meetingId, {
     required double latitude,
     required double longitude,
+    bool moving = false,
   }) async {
     // Authenticate Actors: the document id is the verified Firebase uid.
     final user = AuthService().currentUser;
@@ -48,6 +49,9 @@ class MeetingLocationService {
       'name': UserService().currentUser.name,
       'latitude': latitude,
       'longitude': longitude,
+      // Estado del acelerómetro al enviar la posición: los demás
+      // participantes lo usan para mostrar "is moving" cerca de la hora.
+      'moving': moving,
       'timestamp': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
@@ -123,6 +127,7 @@ class _LocationsNotifier
         longitude: lng.toDouble(),
         // null while the server timestamp of a local write is still pending.
         updatedAt: timestamp is Timestamp ? timestamp.toDate() : DateTime.now(),
+        moving: data['moving'] == true,
       );
     }
     value = result;

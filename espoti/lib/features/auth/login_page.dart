@@ -4,6 +4,7 @@ import '../../app/routes.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/constants/input_limits.dart';
 import '../../core/widgets/espoti_button.dart';
 import '../../core/widgets/espoti_logo.dart';
 import '../../core/widgets/espoti_text_field.dart';
@@ -38,7 +39,7 @@ class _LoginPageState extends State<LoginPage> {
   /// Login is a protected view: Firebase Auth needs the network.
   Future<bool> _ensureOnline() async {
     if (await ConnectivityService.instance.check()) return true;
-    _showError('Sin conexión. Conéctate a internet para iniciar sesión.');
+    _showError('No connection. Connect to the internet to log in.');
     return false;
   }
 
@@ -60,7 +61,7 @@ class _LoginPageState extends State<LoginPage> {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Te enviamos un correo a $email para restablecer la contraseña.')),
+        SnackBar(content: Text('We sent a password reset email to $email.')),
       );
     } on FirebaseAuthException catch (e) {
       _showError(AuthService.getReadableAuthError(e));
@@ -68,18 +69,26 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _handleLogin() async {
+    if (_isLoading) return;
     final email = _emailController.text.trim();
     final isValidDomain = AuthService.isValidEmailDomain(email);
 
+    // Inicio de sesión solo con correo y contraseña (más Google aparte). Se
+    // validan los mismos límites que muestra la interfaz.
     setState(() {
       if (email.isEmpty) {
         _emailError = 'Email is required';
+      } else if (email.length > InputLimits.email) {
+        _emailError = InputLimits.tooLong(email, InputLimits.email, 'Email');
       } else if (!isValidDomain) {
         _emailError = 'Enter an email address with a valid domain (e.g., user@domain.com)';
       } else {
         _emailError = null;
       }
-      _passwordError = _passwordController.text.isEmpty ? 'Password is required' : null;
+      _passwordError = _passwordController.text.isEmpty
+          ? 'Password is required'
+          : InputLimits.tooLong(
+              _passwordController.text, InputLimits.passwordMax, 'Password');
     });
 
     if (_emailError != null || _passwordError != null) return;
@@ -161,12 +170,17 @@ class _LoginPageState extends State<LoginPage> {
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
                 errorText: _emailError,
+                maxLength: InputLimits.email,
+                textInputAction: TextInputAction.next,
               ),
               EspotiTextField(
                 label: AppStrings.password,
                 controller: _passwordController,
                 obscureText: true,
                 errorText: _passwordError,
+                maxLength: InputLimits.passwordMax,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _handleLogin(),
               ),
               const SizedBox(height: AppDimensions.paddingM),
               EspotiButton(
@@ -178,8 +192,10 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: AppDimensions.paddingL),
               _SocialIconsRow(onGoogleTap: _handleGoogleLogin),
               const SizedBox(height: AppDimensions.paddingL),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              // Wrap en vez de Row: en pantallas angostas el texto baja de
+              // línea en lugar de desbordarse.
+              Wrap(
+                alignment: WrapAlignment.center,
                 children: [
                   const Text(
                     AppStrings.noAccount,

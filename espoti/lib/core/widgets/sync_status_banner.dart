@@ -20,22 +20,22 @@ class SyncStatusBanner extends StatelessWidget {
         // Muestra un mensaje si existen operaciones que no se pudieron sincronizar.
         if (s.failed > 0) {
           message = s.failed == 1
-              ? '1 cambio no se pudo sincronizar.'
-              : '${s.failed} cambios no se pudieron sincronizar.';
+              ? '1 change could not be synced.'
+              : '${s.failed} changes could not be synced.';
 
         // Informa cuando no hay conexión y existen cambios pendientes.
         } else if (!s.online) {
           message = s.pending > 0
-              ? 'Sin conexión · ${s.pending} cambio(s) se enviarán al reconectar.'
-              : 'Sin conexión · mostrando datos guardados.';
+              ? 'Offline · ${s.pending} change(s) will be sent when you reconnect.'
+              : 'Offline · showing saved data.';
 
         // Informa cuando se están enviando cambios a Firestore.
         } else if (s.syncing) {
-          message = 'Sincronizando…';
+          message = 'Syncing…';
 
         // Informa cuando todavía existen cambios pendientes.
         } else if (s.pending > 0) {
-          message = '${s.pending} cambio(s) pendientes de sincronizar.';
+          message = '${s.pending} change(s) waiting to sync.';
 
         // No muestra el banner cuando no hay nada que informar.
         } else {
@@ -82,7 +82,7 @@ class SyncStatusBanner extends StatelessWidget {
                   onPressed: s.failed > 0
                       ? SyncService.instance.retryFailed
                       : SyncService.instance.syncNow,
-                  child: const Text('Reintentar'),
+                  child: const Text('Retry'),
                 ),
             ],
           ),

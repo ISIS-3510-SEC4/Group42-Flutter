@@ -89,15 +89,16 @@ class AppUser {
       lastName: lName,
       name: (json['name'] as String?)?.isNotEmpty == true
           ? json['name'] as String
-          : (defaultName.isNotEmpty ? defaultName : 'Julian'),
-      code: json['code'] as String? ?? 'AXBZ12',
-      location: json['location'] as String? ?? 'Bogotá D.C.',
+          : defaultName,
+      // Missing fields stay empty: no invented name, code, city or photo.
+      code: json['code'] as String? ?? '',
+      location: json['location'] as String? ?? '',
       preferences: (json['preferences'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
-          const ['Walk', 'Eat'],
-      maxRadiusKm: json['maxRadiusKm'] as int? ?? 10,
-      avatarUrl: json['avatarUrl'] as String? ?? 'https://i.pravatar.cc/200?img=13',
+          const [],
+      maxRadiusKm: (json['maxRadiusKm'] as num?)?.toInt() ?? 10,
+      avatarUrl: json['avatarUrl'] as String? ?? '',
       email: json['email'] as String? ?? '',
       phone: json['phone'] as String? ?? '',
       description: json['description'] as String? ?? '',
@@ -105,17 +106,14 @@ class AppUser {
   }
 }
 
-/// Default mock user fallback
-const AppUser mockUser = AppUser(
-  firstName: 'Espoti',
-  lastName: '',
-  name: 'Espoti User',
-  code: 'SAVEJAGUAR',
-  location: 'Bogotá D.C.',
-  preferences: ['Walk', 'Eat'],
+/// Profile shown while there is no signed-in user (e.g. right after
+/// sign-out). Empty on purpose: no sample person is ever displayed.
+const AppUser emptyUser = AppUser(
+  name: '',
+  code: '',
+  location: '',
+  preferences: [],
   maxRadiusKm: 10,
-  avatarUrl: 'https://images.pexels.com/photos/39987037/pexels-photo-39987037.jpeg',
-  email: 'espoti@gmail.com',
-  phone: '0000000000',
-  description: 'Espoti es nuestra mascota, un jaguar que representa la fuerza y la agilidad de nuestra aplicación. ¡Únete a Espoti y descubre nuevas experiencias!',
+  email: '',
+  description: '',
 );

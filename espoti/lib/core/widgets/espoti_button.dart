@@ -51,11 +51,17 @@ class EspotiButton extends StatelessWidget {
                   strokeWidth: 2.5,
                 ),
               )
-            : Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+            // El botón tiene alto fijo: el texto se reduce para caber en una
+            // línea en vez de partirse y desbordar el botón.
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
       ),

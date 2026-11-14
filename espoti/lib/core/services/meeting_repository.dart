@@ -123,9 +123,9 @@ class MeetingRepository {
   /// Firestore is updated by the sync service (now or when back online).
   Future<MeetingRecord> save(MeetingRecord record) async {
     final uid = _uid;
-    if (uid == null) throw StateError('Debes iniciar sesión para guardar reuniones.');
+    if (uid == null) throw StateError('You must log in to save meetings.');
     if (record.organizerId != uid) {
-      throw StateError('Solo el organizador puede editar esta reunión.');
+      throw StateError('Only the organizer can edit this meeting.');
     }
     _listenToSync();
 

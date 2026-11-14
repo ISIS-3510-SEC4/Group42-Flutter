@@ -9,6 +9,7 @@ import '../offline/local_store.dart';
 import '../offline/pending_operation.dart';
 import '../offline/sync_service.dart';
 import '../offline/sync_queue.dart';
+import 'friend_code_service.dart';
 
 /// Profile of the signed-in user.
 ///
@@ -26,7 +27,7 @@ class UserService {
   /// Re-read the profile from Firestore at most every 30 minutes.
   static const Duration remoteTtl = Duration(minutes: 30);
 
-  final ValueNotifier<AppUser> userNotifier = ValueNotifier<AppUser>(mockUser);
+  final ValueNotifier<AppUser> userNotifier = ValueNotifier<AppUser>(emptyUser);
 
   AppUser get currentUser => userNotifier.value;
 
@@ -42,7 +43,7 @@ class UserService {
     final firebaseUser = FirebaseAuth.instance.currentUser;
     if (firebaseUser == null) {
       _uid = null;
-      userNotifier.value = mockUser;
+      userNotifier.value = emptyUser;
       return;
     }
     final uid = firebaseUser.uid;
@@ -53,7 +54,10 @@ class UserService {
       userNotifier.value = local ?? _fromAuth(firebaseUser);
       if (local == null) await _writeLocal(uid, userNotifier.value);
 
-      final remote = _syncProfile(firebaseUser, force: local == null);
+      // Después de sincronizar el perfil se publica el código de amigo en el
+      // directorio público (user_codes) para que otros puedan buscarlo.
+      final remote = _syncProfile(firebaseUser, force: local == null)
+          .then((_) => FriendCodeService.instance.publishMyCode());
       if (awaitRemote) {
         await remote;
       } else {
@@ -110,6 +114,9 @@ class UserService {
     // network and must not block the UI when offline.
     if (firebaseUser != null) {
       unawaited(_updateAuthProfile(firebaseUser, user));
+      // Nombre o foto pueden haber cambiado: actualizar el directorio de
+      // códigos (no hace nada si ya se está publicando).
+      unawaited(FriendCodeService.instance.publishMyCode());
     }
   }
 
@@ -125,7 +132,7 @@ class UserService {
     } catch (e) {
       debugPrint('Error clearing user profile: $e');
     }
-    userNotifier.value = mockUser;
+    userNotifier.value = emptyUser;
   }
 
   // ---------------------------------------------------------------------------
@@ -199,8 +206,8 @@ class UserService {
           ? displayName
           : (firebaseUser.email?.split('@').first ?? 'User'),
       code: 'ESP${(firebaseUser.uid.hashCode % 9000 + 1000).abs()}',
-      location: 'Bogotá D.C.',
-      preferences: const ['Walk', 'Eat'],
+      location: '',
+      preferences: const [],
       maxRadiusKm: 10,
       avatarUrl: firebaseUser.photoURL ??
           'https://images.pexels.com/photos/39987037/pexels-photo-39987037.jpeg',

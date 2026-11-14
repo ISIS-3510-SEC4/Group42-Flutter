@@ -1,46 +1,218 @@
 rules_version = '2';
 
-// Suggested rules for the collections used by the Flutter app.
-// NOT deployed automatically: review them and publish from the Firebase
-// console (Firestore > Rules) or with `firebase deploy --only firestore:rules`.
-// They must stay compatible with the Kotlin app that shares the project.
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Cada usuario accede unicamente a su documento
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    match /{document=**} {
+      allow read, write: if request.time < timestamp.date(2026, 12, 24);
+    }
+    
+
+    // ===== Reglas agregadas para la app Flutter (lo de arriba no se modificó) =====
+
     function signedIn() { return request.auth != null; }
 
-    // One profile per Firebase uid.
-    match /users/{uid} {
-      allow read: if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.firebaseUid == uid;
-      allow delete: if false;
+    function verifiedEmail() {
+      return signedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
     }
 
-    // Meetings: only the organizer can write.
+    function isOrganizer(meeting) {
+      return meeting.organizerId == request.auth.uid;
+    }
+
+    function isInvited(meeting) {
+      return verifiedEmail()
+        && meeting.get('inviteeEmails', []) is list
+        && request.auth.token.email.lower() in meeting.get('inviteeEmails', []);
+    }
+
+    function isParticipant(meeting) {
+      return signedIn() && (isOrganizer(meeting) || isInvited(meeting));
+    }
+
+    function meetingData(meetingId) {
+      return get(/databases/$(database)/documents/meetings/$(meetingId)).data;
+    }
+
+    // Same window as MeetingRecord.locationWindowBefore/After in the app:
+    // from 2 h before to 4 h after the scheduled time, never if canceled.
+    function inLocationWindow(meeting) {
+      return meeting.get('status', '') != 'canceled'
+        && meeting.get('scheduledAt', null) is timestamp
+        && request.time >= meeting.scheduledAt - duration.value(2, 'h')
+        && request.time < meeting.scheduledAt + duration.value(4, 'h');
+    }
+
+    // Meetings: participants can read; only the organizer can write.
     match /meetings/{meetingId} {
-      allow read: if signedIn();
+      // `resource == null`: the sync service reads the document inside a
+      // transaction before creating it.
+      allow get: if signedIn()
+        && (resource == null || isParticipant(resource.data));
+      // Queries must be limited to the user's meetings
+      // (the app queries `organizerId == uid`).
+      allow list: if signedIn()
+        && (isOrganizer(resource.data) || isInvited(resource.data));
       allow create: if signedIn()
-        && request.resource.data.organizerId == request.auth.uid;
+        && request.resource.data.organizerId == request.auth.uid
+        && request.resource.data.get('inviteeEmails', []) is list;
       allow update: if signedIn()
         && resource.data.organizerId == request.auth.uid
-        && request.resource.data.organizerId == request.auth.uid;
+        && request.resource.data.organizerId == request.auth.uid
+        && request.resource.data.get('inviteeEmails', []) is list;
+      // Cierre de una votación por un invitado: solo pending_votes ->
+      // scheduled y solo los campos del resultado. (Las reglas no pueden
+      // contar los votos; la app solo cierra cuando todos votaron y el
+      // ganador es determinista, ver VoteTally.)
+      allow update: if isInvited(resource.data)
+        && resource.data.status == 'pending_votes'
+        && request.resource.data.status == 'scheduled'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'placeName', 'placeCategory', 'votingClosedAt',
+          'clientUpdatedAt', 'updatedAt'
+        ]);
       allow delete: if false;
 
-      // Live participant locations (existing feature).
+      // Votos: un documento por usuario (id = uid), así nadie puede tener
+      // dos votos. Solo participantes, solo mientras la votación está abierta.
+      // Un invitado firma su voto con su correo verificado.
+      match /votes/{voterUid} {
+        allow read: if isParticipant(meetingData(meetingId));
+        allow create, update: if signedIn()
+          && request.auth.uid == voterUid
+          && request.resource.data.voterUid == voterUid
+          && isParticipant(meetingData(meetingId))
+          && meetingData(meetingId).status == 'pending_votes'
+          && (isOrganizer(meetingData(meetingId))
+              || request.resource.data.email == request.auth.token.email.lower());
+        allow delete: if false;
+      }
+
+      // Live participant locations: only participants of the meeting can read
+      // them, and each participant writes only their own document while the
+      // meeting is inside its location window.
       match /locations/{uid} {
-        allow read: if signedIn();
-        allow write: if signedIn() && request.auth.uid == uid;
+        allow read: if isParticipant(meetingData(meetingId));
+        allow create, update: if signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.userId == uid
+          && isParticipant(meetingData(meetingId))
+          && inLocationWindow(meetingData(meetingId));
+        allow delete: if signedIn() && request.auth.uid == uid;
       }
     }
 
-    // Analytics events are append-only from the apps.
+    // Eventos de analítica de las dos apps (Kotlin y Flutter), solo se
+    // agregan. Validación tomada de las reglas existentes de Kotlin, ampliada
+    // con la plataforma FLUTTER y sus tipos de evento.
     match /analytics_events/{eventId} {
-      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
-      // The sync service reads the doc inside a transaction to avoid duplicates.
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.id == eventId
+        && request.resource.data.timestamp is timestamp
+        && request.resource.data.metadata is map
+        && request.resource.data.platform in ["KOTLIN", "FLUTTER"]
+        && request.resource.data.eventType in [
+          "RECOMMENDATION_REQUESTED",
+          "RECOMMENDATION_DISPLAYED",
+          "RECOMMENDATION_VIEWED",
+          "RECOMMENDATION_SELECTED",
+          "RECOMMENDATION_DECISION",
+          "RECOMMENDATION_LOADED",
+          "PLANNING_STEP_STARTED",
+          "PLANNING_STEP_COMPLETED",
+          "PLANNING_FLOW_ABANDONED",
+          "PLANNING_FLOW_COMPLETED",
+          "FEATURE_USED",
+          "FILTER_USED",
+          "MEETING_CREATED"
+        ]
+        && (
+          request.resource.data.get('durationMs', null) == null
+          || (request.resource.data.durationMs is int
+              && request.resource.data.durationMs >= 0)
+        );
+
+      // Solo permite volver a guardar un evento idéntico (Kotlin).
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data == resource.data;
+
+      // El outbox de Flutter lee el documento dentro de una transacción
+      // antes de crearlo (para no duplicar); solo el propio o uno que no existe.
       allow get: if signedIn()
         && (resource == null || resource.data.userId == request.auth.uid);
-      allow list, update, delete: if false;
+      // El tablero de analítica de la app lee los eventos de Flutter en
+      // tiempo real (la consulta filtra platform == 'FLUTTER').
+      allow list: if signedIn() && resource.data.platform == 'FLUTTER';
+      allow delete: if false;
+    }
+
+    // Directorio público de códigos de amigo: solo nombre, foto, código y
+    // uid. Se puede leer un código concreto, pero no listar la colección (no
+    // se pueden recorrer todos los usuarios). Cada usuario escribe solo el suyo.
+    match /user_codes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.code == code;
+      allow update: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.code == code;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Aggregates written by the scripts in analytics/ (admin SDK, which
+    // bypasses these rules). Read-only for signed-in users, limited to the
+    // dashboards of the Flutter app listed here.
+    match /analytics_results/{resultId} {
+      allow read: if signedIn() && resultId in [
+        'planning_abandonment_FLUTTER',
+        'meeting_peak_windows_FLUTTER'
+      ];
+      allow write: if false;
     }
   }
+  match /analytics_events/{eventId} {
+  allow create: if request.auth != null
+    && request.resource.data.userId == request.auth.uid
+    && request.resource.data.id == eventId
+    && request.resource.data.timestamp is timestamp
+    && request.resource.data.metadata is map
+    && request.resource.data.platform == "KOTLIN"
+    && request.resource.data.eventType in [
+      "RECOMMENDATION_REQUESTED",
+      "RECOMMENDATION_DISPLAYED",
+      "RECOMMENDATION_VIEWED",
+      "RECOMMENDATION_SELECTED",
+      "PLANNING_STEP_STARTED",
+      "PLANNING_STEP_COMPLETED",
+      "PLANNING_FLOW_ABANDONED",
+      "FEATURE_USED",
+      "FILTER_USED",
+      "MEETING_CREATED"
+    ]
+    && (
+      request.resource.data.durationMs == null
+      || (
+        request.resource.data.durationMs is int
+        && request.resource.data.durationMs >= 0
+      )
+    );
+
+  // Allows only an identical re-save of an existing event.
+  allow update: if request.auth != null
+    && resource.data.userId == request.auth.uid
+    && request.resource.data == resource.data;
+
+  allow read, delete: if false;
+}
 }

@@ -1,7 +1,4 @@
-import 'dart:math' as math;
-
 import 'package:latlong2/latlong.dart';
-import '../../../core/concurrency/geo_isolate.dart';
 
 class Participant {
   const Participant({required this.name, required this.location});
@@ -37,6 +34,8 @@ class RankedPlace {
 }
 
 /// Strategy: interchangeable ways to rank candidate places.
+/// (La estrategia "más justa" se eliminó; queda la más cercana y el decorador
+/// de lluvia. Se mantiene la interfaz por si se agregan otras.)
 abstract class RecommendationStrategy {
   const RecommendationStrategy();
 
@@ -56,10 +55,10 @@ class ClosestToPointStrategy extends RecommendationStrategy {
   final LatLng reference;
 
   @override
-  String get label => 'Más cerca';
+  String get label => 'Closest';
 
   @override
-  String get description => 'Lugares más cercanos al punto elegido en el mapa.';
+  String get description => 'Places closest to the point chosen on the map.';
 
   @override
   List<RankedPlace> rank(
@@ -76,88 +75,12 @@ class ClosestToPointStrategy extends RecommendationStrategy {
   RankedPlace _closest(PlaceCandidate place, double meters) => RankedPlace(
         place: place,
         score: meters,
-        explanation: '${formatDistance(meters)} del punto elegido',
+        explanation: '${formatDistance(meters)} from the chosen point',
       );
-}
-
-/// Prefers places where no participant travels much more than the others:
-/// score = largest distance + spread (standard deviation) of the distances.
-class FairTravelStrategy extends RecommendationStrategy {
-  const FairTravelStrategy();
-
-  @override
-  String get label => 'Más justo';
-
-  @override
-  String get description =>
-      'Equilibra el viaje: evita que alguien recorra mucho más que los demás.';
-
-  @override
-  List<RankedPlace> rank(
-    List<PlaceCandidate> candidates,
-    List<Participant> participants,
-  ) {
-    if (participants.isEmpty) return const [];
-
-    final ranked = <RankedPlace>[];
-    for (final place in candidates) {
-      final distances = [
-        for (final participant in participants)
-          _distanceMeters(participant.location, place.location),
-      ];
-      final longest = distances.reduce(math.max);
-      final shortest = distances.reduce(math.min);
-      ranked.add(RankedPlace(
-        place: place,
-        score: longest + _standardDeviation(distances),
-        explanation:
-            'Máx. ${formatDistance(longest)} · diferencia ${formatDistance(longest - shortest)}',
-      ));
-    }
-    return _sorted(ranked);
-  }
-
-  /// Calculates rankings in a background Dart Isolate to prevent UI frame drops.
-  Future<List<RankedPlace>> rankAsync(
-    List<PlaceCandidate> candidates,
-    List<Participant> participants,
-  ) async {
-    if (participants.isEmpty) return const [];
-    final rawCandidates = candidates.asMap().entries.map((e) => {
-      'index': e.key,
-      'name': e.value.name,
-      'category': e.value.category,
-      'lat': e.value.location.latitude,
-      'lng': e.value.location.longitude,
-    }).toList();
-
-    final rawParticipants = participants.map((p) => {
-      'name': p.name,
-      'lat': p.location.latitude,
-      'lng': p.location.longitude,
-    }).toList();
-
-    final isolateResults = await GeoIsolate.rankPlacesFairTravel(
-      rawCandidates: rawCandidates,
-      rawParticipants: rawParticipants,
-    );
-
-    return isolateResults.map((res) {
-      final candMap = res['candidate'] as Map<String, dynamic>;
-      final index = candMap['index'] as int;
-      final maxDist = (res['maxDistance'] as num).toDouble();
-      final minDist = (res['minDistance'] as num).toDouble();
-      return RankedPlace(
-        place: candidates[index],
-        score: (res['score'] as num).toDouble(),
-        explanation: 'Máx. ${formatDistance(maxDist)} · diferencia ${formatDistance(maxDist - minDist)}',
-      );
-    }).toList();
-  }
 }
 
 /// Category of places that are exposed to the weather.
-const outdoorCategory = 'Parque';
+const outdoorCategory = 'Park';
 
 /// Decorator: wraps any strategy and pushes outdoor places down the ranking.
 /// Meant to be used only when rain is likely; the penalty grows with the
@@ -188,7 +111,7 @@ class RainAwareStrategy extends RecommendationStrategy {
             ? RankedPlace(
                 place: ranked.place,
                 score: ranked.score + penalty,
-                explanation: '${ranked.explanation} · al aire libre, lluvia probable',
+                explanation: '${ranked.explanation} · outdoors, rain likely',
               )
             : ranked,
     ];
@@ -203,14 +126,6 @@ String formatDistance(double meters) {
 
 double _distanceMeters(LatLng a, LatLng b) =>
     const Distance().as(LengthUnit.Meter, a, b);
-
-double _standardDeviation(List<double> values) {
-  final mean = values.reduce((a, b) => a + b) / values.length;
-  final variance =
-      values.map((v) => (v - mean) * (v - mean)).reduce((a, b) => a + b) /
-          values.length;
-  return math.sqrt(variance);
-}
 
 List<RankedPlace> _sorted(List<RankedPlace> ranked) => ranked
   ..sort((a, b) {

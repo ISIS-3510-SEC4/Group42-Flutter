@@ -2,15 +2,23 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/constants/input_limits.dart';
 import '../../core/services/contacts_service.dart';
 import '../../core/widgets/espoti_button.dart';
 import '../../models/contact.dart';
 
 /// Bottom sheet that lists the user's Google Contacts and returns the
-/// selected ones to invite to a meeting.
+/// selected ones (invitar a una reunión o importar como amigos).
+///
+/// Usa la integración real con Google People API ([ContactsService]) y su
+/// flujo de permisos: si el usuario no entró con Google o no concede el
+/// permiso de contactos, se muestra el error y se puede reintentar.
+/// Devuelve null si se cierra sin confirmar o si no se pudieron cargar los
+/// contactos (así no se borran los ya elegidos por un error de red).
 Future<List<GoogleContact>?> showContactsPicker(
   BuildContext context, {
   List<GoogleContact> initiallySelected = const [],
+  String title = AppStrings.selectContacts,
 }) {
   return showModalBottomSheet<List<GoogleContact>>(
     context: context,
@@ -21,13 +29,16 @@ Future<List<GoogleContact>?> showContactsPicker(
         top: Radius.circular(AppDimensions.radiusL),
       ),
     ),
-    builder: (_) => _ContactsPickerSheet(initiallySelected: initiallySelected),
+    builder: (_) => _ContactsPickerSheet(
+        initiallySelected: initiallySelected, title: title),
   );
 }
 
 class _ContactsPickerSheet extends StatefulWidget {
   final List<GoogleContact> initiallySelected;
-  const _ContactsPickerSheet({required this.initiallySelected});
+  final String title;
+  const _ContactsPickerSheet(
+      {required this.initiallySelected, required this.title});
 
   @override
   State<_ContactsPickerSheet> createState() => _ContactsPickerSheetState();
@@ -71,10 +82,22 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
       setState(() {
         _error = e is ContactsException
             ? e.message
-            : 'No se pudieron cargar tus contactos.';
+            : 'Your contacts could not be loaded.';
         _isLoading = false;
       });
     }
+  }
+
+  /// Seleccionados de la lista cargada + los que ya venían elegidos y no
+  /// aparecen en ella (por ejemplo, invitados guardados solo con correo).
+  List<GoogleContact>? _result() {
+    if (_isLoading || _error != null) return null;
+    final loadedIds = {for (final c in _contacts) c.id};
+    return [
+      ..._contacts.where((c) => _selectedIds.contains(c.id)),
+      ...widget.initiallySelected.where(
+          (c) => _selectedIds.contains(c.id) && !loadedIds.contains(c.id)),
+    ];
   }
 
   @override
@@ -83,7 +106,8 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
       final q = _query.toLowerCase();
       return q.isEmpty ||
           c.displayName.toLowerCase().contains(q) ||
-          c.email.toLowerCase().contains(q);
+          c.email.toLowerCase().contains(q) ||
+          c.phone.contains(q);
     }).toList();
 
     return Padding(
@@ -95,9 +119,9 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                AppStrings.selectContacts,
-                style: TextStyle(
+              Text(
+                widget.title,
+                style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 16,
                   color: AppColors.text,
@@ -106,8 +130,10 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
               const SizedBox(height: AppDimensions.paddingM),
               TextField(
                 onChanged: (v) => setState(() => _query = v),
+                maxLength: InputLimits.contactSearch,
                 decoration: InputDecoration(
                   hintText: 'Search',
+                  counterText: '',
                   prefixIcon: const Icon(Icons.search),
                   filled: true,
                   fillColor: AppColors.orange50,
@@ -126,12 +152,7 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
                   label: AppStrings.done,
                   variant: EspotiButtonVariant.secondary,
                   width: 160,
-                  onPressed: () => Navigator.pop(
-                    context,
-                    _contacts
-                        .where((c) => _selectedIds.contains(c.id))
-                        .toList(),
-                  ),
+                  onPressed: () => Navigator.pop(context, _result()),
                 ),
               ),
             ],
@@ -158,7 +179,7 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
             TextButton.icon(
               onPressed: _load,
               icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar'),
+              label: const Text('Retry'),
             ),
           ],
         ),
@@ -167,7 +188,7 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
     if (visible.isEmpty) {
       return const Center(
         child: Text(
-          'No se encontraron contactos con correo.',
+          'No contacts with an email address or phone number were found.',
           style: TextStyle(color: AppColors.textSecondary),
         ),
       );
@@ -193,8 +214,13 @@ class _ContactsPickerSheetState extends State<_ContactsPickerSheet> {
                 : null,
           ),
           title: Text(c.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: AppColors.text)),
-          subtitle: Text(c.email,
+          // Correo o, si no tiene, el celular.
+          subtitle: Text(c.detail,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                   fontSize: 12, color: AppColors.textSecondary)),
         );

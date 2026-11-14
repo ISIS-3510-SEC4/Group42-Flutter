@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import 'connectivity_service.dart';
@@ -103,10 +102,16 @@ class SyncService with WidgetsBindingObserver {
 
     WidgetsBinding.instance.addObserver(this);
 
-    // Intenta sincronizar cuando un usuario inicia sesión.
-    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
-      if (user != null) syncNow();
-    });
+    // Intenta sincronizar cuando un usuario inicia sesión. Si Firebase no
+    // está inicializado (por ejemplo, en pruebas unitarias) la cola local
+    // sigue funcionando y simplemente no se sincroniza.
+    try {
+      _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+        if (user != null) syncNow();
+      });
+    } catch (e) {
+      debugPrint('SyncService: Firebase Auth unavailable: $e');
+    }
 
     // Escucha los cambios en la conectividad.
     ConnectivityService.instance.isOnline.addListener(_onConnectivity);
@@ -155,11 +160,6 @@ class SyncService with WidgetsBindingObserver {
 
     _publish();
   }
-
-  // Convierte los datos almacenados en una lista de operaciones válidas.
-  static List<PendingOperation> _parse(Object? raw) => raw is List
-      ? raw.map(PendingOperation.tryFromJson).whereType<PendingOperation>().toList()
-      : <PendingOperation>[];
 
   // Guarda las colas de operaciones pendientes y fallidas en el almacenamiento local persistente (SQLite / Outbox).
   Future<void> _persist() async {
@@ -239,8 +239,14 @@ class SyncService with WidgetsBindingObserver {
   Future<void> _syncOnce() async {
     await _ensureLoaded();
 
-    // Obtiene el usuario autenticado actualmente.
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    // Obtiene el usuario autenticado actualmente (null si Firebase no está
+    // inicializado: no hay con quién sincronizar).
+    String? uid;
+    try {
+      uid = FirebaseAuth.instance.currentUser?.uid;
+    } catch (_) {
+      uid = null;
+    }
 
     // No sincroniza si no hay sesión o no existen operaciones de ese usuario.
     if (uid == null || !_queue.any((o) => o.ownerUid == uid)) return;
@@ -293,13 +299,13 @@ class SyncService with WidgetsBindingObserver {
       return _Outcome.done;
     } on TimeoutException {
       ConnectivityService.instance.reportNetworkFailure();
-      _publish(error: 'Sin conexión con el servidor. Se reintentará.');
+      _publish(error: 'No connection to the server. It will retry.');
       return _Outcome.networkDown;
     } on FirebaseException catch (e) {
       // Identifica los errores relacionados con problemas de conexión.
       if (_networkCodes.contains(e.code)) {
         ConnectivityService.instance.reportNetworkFailure();
-        _publish(error: 'Sin conexión con el servidor. Se reintentará.');
+        _publish(error: 'No connection to the server. It will retry.');
         return _Outcome.networkDown;
       }
 
@@ -327,7 +333,7 @@ class SyncService with WidgetsBindingObserver {
     }
 
     debugPrint('Sync failed for ${op.path}: $error');
-    _publish(error: 'No se pudo sincronizar un cambio.');
+    _publish(error: 'A change could not be synced.');
   }
 
   // Ejecuta la escritura dentro de una transacción para evitar inconsistencias.
