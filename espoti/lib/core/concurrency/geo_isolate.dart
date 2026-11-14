@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 
-/// Multithreading / Concurrency engine for heavy GPS and routing calculations (Sprint 3 - Feature 3).
+/// Multithreading / Concurrency engine for heavy GPS and routing calculations.
 ///
 /// Runs intensive geometric, distance, and routing algorithms in background Dart Isolates
 /// to keep the main UI thread at 60 fps.

@@ -13,6 +13,7 @@ import '../features/meetings/meeting_detail_page.dart';
 import '../features/profile/edit_profile_page.dart';
 import '../features/analytics/bq5_analytics_page.dart';
 import '../features/analytics/analytics_dashboard_page.dart';
+import '../features/analytics/meeting_planning_time_page.dart';
 import '../features/meetings/meeting_voting_page.dart';
 import '../features/meetings/pending_votes_page.dart';
 import '../features/motion/motion_sensor_page.dart';
@@ -38,6 +39,7 @@ class AppRoutes {
   static const String createMeetingRecommendations = '/create-meeting-recommendations';
   static const String editProfile = '/edit-profile';
   static const String bq5Analytics = '/analytics-bq5';
+  static const String meetingPlanningTime = '/analytics-meeting-planning-time';
   /// Tablero único con las dos BQ (abandono y tipo 4).
   static const String analyticsDashboard = '/analytics-dashboard';
   // Rutas anteriores: ahora abren el mismo tablero único.
@@ -76,6 +78,7 @@ class AppRoutes {
         meetingDetail: (context) => const MeetingDetailPage(),
         editProfile: (context) => const EditProfilePage(),
         bq5Analytics: (context) => const Bq5AnalyticsPage(),
+        meetingPlanningTime: (context) => const MeetingPlanningTimePage(),
         analyticsDashboard: (context) => const AnalyticsDashboardPage(),
         planningAbandonment: (context) => const AnalyticsDashboardPage(),
         meetingPeakWindows: (context) => const AnalyticsDashboardPage(),

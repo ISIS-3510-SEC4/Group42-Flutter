@@ -1,21 +1,33 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../../models/analytics_event.dart';
+import '../offline/pending_operation.dart';
+import '../offline/sync_queue.dart';
 
 abstract class AnalyticsRepository {
   Future<void> saveEvent(AnalyticsEvent event);
 }
 
+typedef AnalyticsEventEnqueue = Future<void> Function(
+  PendingOperation operation,
+);
+
 class FirestoreAnalyticsRepository implements AnalyticsRepository {
-  FirestoreAnalyticsRepository({FirebaseFirestore? firestore})
-      : _firestore = firestore;
+  FirestoreAnalyticsRepository({AnalyticsEventEnqueue? enqueue})
+      : _enqueue = enqueue;
 
-  FirebaseFirestore? _firestore;
-
-  CollectionReference<Map<String, dynamic>> get _events =>
-      (_firestore ??= FirebaseFirestore.instance).collection('analytics_events');
+  final AnalyticsEventEnqueue? _enqueue;
 
   @override
-  Future<void> saveEvent(AnalyticsEvent event) =>
-      _events.doc(event.id).set(event.toMap());
+  Future<void> saveEvent(AnalyticsEvent event) {
+    final data = Map<String, dynamic>.from(event.toMap())
+      ..['timestamp'] = PendingOperation.timestamp(event.timestamp);
+    final operation = PendingOperation.create(
+      kind: PendingWriteKind.createOnce,
+      collection: 'analytics_events',
+      docId: event.id,
+      ownerUid: event.userId,
+      data: data,
+      now: event.timestamp,
+    );
+    return (_enqueue ?? SyncQueue.instance.enqueue)(operation);
+  }
 }

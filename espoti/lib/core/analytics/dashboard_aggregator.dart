@@ -154,6 +154,120 @@ class _Attempt {
 }
 
 // ---------------------------------------------------------------------------
+// BQ tipo 5: aceptación de recomendaciones de lugares.
+// ---------------------------------------------------------------------------
+
+/// Aggregates explicit recommendation decisions by preference and interaction.
+/// Events without a boolean `accepted` value are ignored so legacy selections
+/// cannot be mistaken for a complete BQ5 decision.
+Map<String, dynamic> aggregateRecommendationAcceptance(
+    List<Map<String, dynamic>> events) {
+  const question =
+      "How do user's location preferences and interaction patterns affect the acceptance rate of meeting point recommendations?";
+  final byPreference = <String, Map<String, int>>{};
+  final byPattern = <String, Map<String, int>>{};
+  final byCategory = <String, Map<String, int>>{};
+  var totalDecisions = 0;
+  var totalAccepted = 0;
+  var totalRejected = 0;
+  var ignoredEvents = 0;
+  var acceptedDistanceSum = 0.0;
+  var acceptedDistanceCount = 0;
+  var rejectedDistanceSum = 0.0;
+  var rejectedDistanceCount = 0;
+
+  void record(Map<String, Map<String, int>> groups, String key, bool accepted) {
+    final stats = groups.putIfAbsent(key, () => {'total': 0, 'accepted': 0});
+    stats['total'] = stats['total']! + 1;
+    if (accepted) stats['accepted'] = stats['accepted']! + 1;
+  }
+
+  for (final event in events) {
+    if (event['eventType'] != 'RECOMMENDATION_DECISION') continue;
+    final metadata = _meta(event);
+    final accepted = metadata['accepted'];
+    if (accepted is! bool) {
+      ignoredEvents++;
+      continue;
+    }
+
+    totalDecisions++;
+    if (accepted) {
+      totalAccepted++;
+    } else {
+      totalRejected++;
+    }
+
+    final preferences = metadata['locationPreferences'];
+    if (preferences is List) {
+      for (final value in preferences) {
+        final preference = value.toString().trim();
+        if (preference.isNotEmpty) {
+          record(byPreference, preference, accepted);
+        }
+      }
+    }
+
+    final patternValue = metadata['interactionPattern'];
+    final pattern = patternValue is String && patternValue.isNotEmpty
+        ? patternValue
+        : 'DIRECT_SELECT';
+    record(byPattern, pattern, accepted);
+
+    final categoryValue = metadata['placeCategory'];
+    final category = categoryValue is String && categoryValue.isNotEmpty
+        ? categoryValue
+        : 'General';
+    record(byCategory, category, accepted);
+
+    final distance = metadata['distanceMeters'];
+    if (distance is num && distance > 0) {
+      if (accepted) {
+        acceptedDistanceSum += distance.toDouble();
+        acceptedDistanceCount++;
+      } else {
+        rejectedDistanceSum += distance.toDouble();
+        rejectedDistanceCount++;
+      }
+    }
+  }
+
+  double rate(int accepted, int total) => total == 0
+      ? 0
+      : double.parse(((accepted / total) * 100).toStringAsFixed(1));
+
+  Map<String, dynamic> formatGroups(Map<String, Map<String, int>> groups) => {
+        for (final entry in groups.entries)
+          entry.key: {
+            'total': entry.value['total']!,
+            'accepted': entry.value['accepted']!,
+            'rate': rate(entry.value['accepted']!, entry.value['total']!),
+          },
+      };
+
+  return {
+    'question': question,
+    'platform': 'FLUTTER',
+    'totalDecisions': totalDecisions,
+    'totalAccepted': totalAccepted,
+    'totalRejected': totalRejected,
+    'overallAcceptanceRate': rate(totalAccepted, totalDecisions),
+    'byPreference': formatGroups(byPreference),
+    'byInteractionPattern': formatGroups(byPattern),
+    'byCategory': formatGroups(byCategory),
+    'distanceMetrics': {
+      'avgDistanceAcceptedMeters': acceptedDistanceCount == 0
+          ? 0
+          : (acceptedDistanceSum / acceptedDistanceCount).round(),
+      'avgDistanceRejectedMeters': rejectedDistanceCount == 0
+          ? 0
+          : (rejectedDistanceSum / rejectedDistanceCount).round(),
+    },
+    'ignoredEvents': ignoredEvents,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // BQ tipo 4 (VV3): días y franjas pico en que se organizan reuniones, por
 // medio de transporte.
 // ---------------------------------------------------------------------------

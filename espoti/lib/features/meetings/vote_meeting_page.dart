@@ -11,7 +11,10 @@ import '../../core/constants/app_dimensions.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/widgets/bottom_navigation.dart';
 import '../../core/widgets/espoti_top_bar.dart';
+import '../../core/analytics/recommendation_acceptance_tracker.dart';
 import '../../core/services/meeting_voting_service.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/user_service.dart';
 import '../../models/contact.dart';
 import '../../models/meeting_vote.dart';
 import '../../models/meeting.dart';
@@ -51,6 +54,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
   int _selectedIndex = 0;
   final _recommendationsService = NearbyRecommendationsService();
   final _reviewTracker = RecommendationReviewTracker();
+  final _acceptanceTracker = RecommendationAcceptanceTracker.instance;
   final _weatherService = WeatherService();
   WeatherForecast? _forecast;
   DateTime? _meetingMoment;
@@ -110,7 +114,8 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     if (_meetingMoment != null) _meetingWhenLabel = '$day $time'.trim();
     _meetingId = args['meetingId'] as String?;
     final invitees = args['invitees'];
-    if (invitees is List) _invitees = invitees.whereType<GoogleContact>().toList();
+    if (invitees is List)
+      _invitees = invitees.whereType<GoogleContact>().toList();
     final location = args['location'];
     if (location is LatLng) {
       _location = location;
@@ -347,6 +352,44 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     return MeetingVotingService.instance.submitVote(saved, mine);
   }
 
+  Future<void> _recordBq5Decisions({
+    required int viewedCount,
+  }) async {
+    final userId = AuthService().currentUser?.uid;
+    final origin = _location;
+    if (userId == null || origin == null) return;
+
+    final user = UserService().currentUser;
+    final candidates = _rankedPlaces.take(_recommendations.length).toList();
+    final pattern = viewedCount > 1
+        ? RecommendationInteractionPattern.multipleViewed
+        : RecommendationInteractionPattern.directSelect;
+    final durationMs = DateTime.now().difference(_horaEntrada).inMilliseconds;
+
+    // A confirmed vote accepts the chosen place and rejects the other places
+    // that were shown in the same recommendation list.
+    for (var index = 0; index < candidates.length; index++) {
+      final place = candidates[index];
+      final distanceMeters =
+          const Distance().as(LengthUnit.Meter, origin, place.location);
+      final placeId =
+          '${place.name}|${place.location.latitude},${place.location.longitude}';
+      await _acceptanceTracker.recordDecision(
+        userId: userId,
+        meetingId: _meetingId,
+        placeId: placeId,
+        placeName: place.name,
+        placeCategory: place.category,
+        locationPreferences: List<String>.from(user.preferences),
+        maxRadiusKm: user.maxRadiusKm,
+        distanceMeters: distanceMeters,
+        interactionPattern: pattern,
+        accepted: index == _selectedIndex,
+        durationMs: durationMs,
+      );
+    }
+  }
+
   Future<void> _handleVote() async {
     if (_savingChoice) return;
     if (_recommendations.isEmpty) {
@@ -357,8 +400,7 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
     _advanced = true;
     AnalyticsService()
       ..stepCompleted(MeetingPlanningStep.vote, meetingId: _meetingId)
-      ..stepViewed(MeetingPlanningStep.result)
-      ..planningCompleted(meetingId: _meetingId);
+      ..stepViewed(MeetingPlanningStep.result);
     // CÁLCULO DE TIEMPO: Hora de salida al presionar el botón y diferencia en segundos enviada a AnalyticsService
     final horaSalida = DateTime.now();
     final diferenciaSegundos = horaSalida.difference(_horaEntrada).inSeconds;
@@ -369,20 +411,22 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
 
     final chosen = _recommendations[_selectedIndex];
     final chosenPlace = _rankedPlaces[_selectedIndex];
-    _reviewTracker.selected(chosen.placeName, meetingId: _meetingId);
-
+    final viewedCount = _reviewTracker.viewedCount;
     setState(() => _savingChoice = true);
     // Only participants write votes; the outbox queues them while offline
     // and the sync service uploads them when the network returns.
-    final offline = (await Connectivity().checkConnectivity())
-        .every((r) => r == ConnectivityResult.none);
+    var offline = false;
     VoteItem? voting;
     try {
+      offline = (await Connectivity().checkConnectivity())
+          .every((r) => r == ConnectivityResult.none);
+      _reviewTracker.selected(chosen.placeName, meetingId: _meetingId);
+      await _recordBq5Decisions(viewedCount: viewedCount);
       voting = await _saveChoice(chosenPlace);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Could not save the chosen place: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not save the chosen place: $e')));
       }
     } finally {
       if (mounted) setState(() => _savingChoice = false);
@@ -496,7 +540,8 @@ class _VoteMeetingPageState extends State<VoteMeetingPage> {
               if (_invitees.isNotEmpty)
                 const Text(
                   'Your vote is the first one. The place is decided when every participant has voted.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  style:
+                      TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
               const SizedBox(height: AppDimensions.paddingL),
               const Text(AppStrings.ourRecommendations,
@@ -631,8 +676,8 @@ class _WeatherNote extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: const TextStyle(
-                  fontSize: 12, color: AppColors.textSecondary),
+              style:
+                  const TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -678,10 +723,11 @@ String _mapThumbnailUrl(LatLng point, {int zoom = 16}) {
   final tiles = 1 << zoom;
   final latitude = point.latitude * math.pi / 180;
   final x = ((point.longitude + 180) / 360 * tiles).floor();
-  final y = ((1 - math.log(math.tan(latitude) + 1 / math.cos(latitude)) / math.pi) /
-          2 *
-          tiles)
-      .floor();
+  final y =
+      ((1 - math.log(math.tan(latitude) + 1 / math.cos(latitude)) / math.pi) /
+              2 *
+              tiles)
+          .floor();
   return 'https://tile.openstreetmap.org/$zoom/$x/$y.png';
 }
 
@@ -755,34 +801,35 @@ class _RecommendationCard extends StatelessWidget {
             const SizedBox(width: AppDimensions.paddingM),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppDimensions.paddingS),
+                padding: const EdgeInsets.symmetric(
+                    vertical: AppDimensions.paddingS),
                 child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    meeting.placeName,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15,
-                      color: AppColors.text,
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      meeting.placeName,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        color: AppColors.text,
+                      ),
                     ),
-                  ),
-                  // Sin estrellas: OpenStreetMap no da calificaciones (rating
-                  // siempre era null y dejaba una fila vacía).
-                  const SizedBox(height: AppDimensions.paddingXS),
-                  Text(
-                    meeting.distanceLabel,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.textSecondary),
-                  ),
-                ],
-              ),
+                    // Sin estrellas: OpenStreetMap no da calificaciones (rating
+                    // siempre era null y dejaba una fila vacía).
+                    const SizedBox(height: AppDimensions.paddingXS),
+                    Text(
+                      meeting.distanceLabel,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
               ),
             ),
             // Un solo indicador de selección (el botón "ver" repetía la misma
